@@ -197,8 +197,9 @@ class AudioPrivacySystem:
         # 4. Combine to generate voice-like noise 组合生成类语音噪声
         voice_like = filtered_noise * syllable_modulation
         
-        # 5. Normalize 归一化
+        # 5. Normalize and boost volume 归一化并大幅提升音量
         voice_like = voice_like / (np.max(np.abs(voice_like)) + 1e-9)
+        voice_like *= 2.0  # STRONG boost volume for aggressive masking effect 大幅提升音量以获得激进掩蔽效果
         
         return voice_like.astype(np.float32)
     
@@ -228,8 +229,9 @@ class AudioPrivacySystem:
         filtered_noise = self._bandpass_filter(noise, sr)
         mask += filtered_noise * 0.3
         
-        # Normalize 归一化
+        # Normalize and boost volume 归一化并大幅提升音量
         mask = mask / (np.max(np.abs(mask)) + 1e-9)
+        mask *= 2.0  # STRONG boost volume for aggressive masking effect 大幅提升音量以获得激进掩蔽效果
         
         return mask.astype(np.float32)
     
@@ -338,7 +340,9 @@ class AudioPrivacySystem:
             return clean.copy(), mask.copy()
         
         # Calculate required masking signal amplitude 计算所需的掩蔽信号幅度
-        desired_mask_rms = clean_rms / (10.0 ** (target_snr_db / 20.0))
+        # Apply VERY strong masking by reducing effective SNR significantly 通过大幅降低有效SNR应用极强掩蔽
+        effective_snr = target_snr_db - 8.0  # Reduce SNR by 8dB for VERY strong masking
+        desired_mask_rms = clean_rms / (10.0 ** (effective_snr / 20.0))
         scale_factor = desired_mask_rms / mask_rms
         
         # Scale masking signal 缩放掩蔽信号
