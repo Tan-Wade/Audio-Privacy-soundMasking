@@ -2,6 +2,25 @@
 
 基于声音掩蔽技术的智能手机音频隐私保护实现
 
+## 🚀 快速运行
+
+**一键运行（处理所有输入文件）**：
+```bash
+python audio_privacy_system.py
+```
+
+**指定单个文件**：
+```bash
+python audio_privacy_system.py --input dataset/input/your_file.wav
+```
+
+**使用原始掩蔽类型**：
+```bash
+python audio_privacy_system.py --mask-type voice_like
+```
+
+---
+
 ## 📖 项目简介
 
 本项目复现了论文 "Exploiting Sound Masking for Audio Privacy in Smartphones" 的核心思想，实现了一个音频隐私保护系统。
@@ -20,7 +39,7 @@
 - **信噪比控制**: 可调节掩蔽强度
 - **语音优化**: 针对中文语音特征进行参数优化
 
-## 🚀 快速开始
+## 🛠️ 详细使用
 
 ### 1. 环境准备
 
@@ -61,7 +80,6 @@ python audio_privacy_system.py --help
 ```
 Sound-Masking/
 ├── audio_privacy_system.py    # 主系统实现
-├── demo.py                    # 快速演示脚本
 ├── audio_metrics.py           # 音频质量评估模块
 ├── README.md                 # 项目说明文档
 ├── dataset/                  # 数据集目录
@@ -78,13 +96,13 @@ Sound-Masking/
 ### 场景1：使用现有录音
 
 1. 将你的8位数字录音文件放在 `dataset/input/` 目录
-2. 运行 `python demo.py` 或指定文件路径
+2. 运行 `python audio_privacy_system.py` 处理所有文件
 3. 查看 `dataset/output/` 目录下的结果文件
 
 **示例**：
 ```bash
-# 处理单个文件（使用多音调掩蔽）
-python audio_privacy_system.py --input dataset/input/female-voice.m4a --mask-type multi_tone
+# 处理单个文件（默认使用多音调掩蔽）
+python audio_privacy_system.py --input dataset/input/female-voice.m4a
 
 # 批量处理
 python audio_privacy_system.py --batch dataset/input/
@@ -141,16 +159,16 @@ system = AudioPrivacySystem(target_snr_db=5.0)
 ### 选择掩蔽类型
 
 ```python
+# 多音调掩蔽（默认，类似多个说话人）
+result = system.process_audio_pair(input_file, mask_type="multi_tone")
+
 # 原始类语音掩蔽（适合展示概念）
 result = system.process_audio_pair(input_file, mask_type="voice_like")
-
-# 多音调掩蔽（类似多个说话人）
-result = system.process_audio_pair(input_file, mask_type="multi_tone")
 ```
 
 **掩蔽类型说明**：
+- `multi_tone`: 多音调掩蔽，类似多个说话人同时说话（默认）
 - `voice_like`: 原始类语音掩蔽，适合展示概念
-- `multi_tone`: 多音调掩蔽，类似多个说话人同时说话
 
 ### 调整恢复质量
 

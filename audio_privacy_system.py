@@ -163,7 +163,7 @@ class AudioPrivacySystem:
         x_new = np.linspace(0, 1, num=new_len, endpoint=False)
         return np.interp(x_new, x_old, data).astype(np.float32)
     
-    def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "voice_like") -> np.ndarray:
+    def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "multi_tone") -> np.ndarray:
         """
         Generate masking noise
         生成掩蔽噪声
@@ -181,7 +181,7 @@ class AudioPrivacySystem:
         elif mask_type == "multi_tone":
             return self._generate_multi_tone_mask(length, sr)
         else:
-            return self._generate_voice_like_noise(length, sr)
+            return self._generate_multi_tone_mask(length, sr)
     
     def _generate_voice_like_noise(self, length: int, sr: int) -> np.ndarray:
         """Original voice-like masking noise 原始的类语音掩蔽噪声"""
@@ -521,7 +521,7 @@ def main():
     parser.add_argument('--batch', '-b', type=str, help='Batch processing directory path')
     parser.add_argument('--snr', type=float, default=0.0, help='Target SNR (dB)')
     parser.add_argument('--sample-rate', type=int, default=16000, help='Sample rate (Hz)')
-    parser.add_argument('--mask-type', type=str, default='voice_like', 
+    parser.add_argument('--mask-type', type=str, default='multi_tone', 
                        choices=['voice_like', 'multi_tone'],
                        help='Type of masking noise')
     
@@ -570,27 +570,36 @@ def main():
             print(f"- Average SNR improvement: {avg_improvement:.2f}dB")
         
     else:
-        # Default demo mode 默认演示模式
+        # Default: Process all files in dataset/input 默认：处理dataset/input中的所有文件
         input_files = []
         for ext in ['*.wav', '*.m4a', '*.mp3', '*.flac']:
             input_files.extend(system.input_dir.glob(ext))
         
         if input_files:
             print(f"Found {len(input_files)} input audio files")
-            print("Processing first file for demo...")
+            print("Processing all files...")
             
-            first_file = input_files[0]
-            result = system.process_audio_pair(str(first_file), mask_type=args.mask_type)
-            print(f"\nProcessing results:")
-            print(f"- File: {first_file.name}")
-            print(f"- Input SNR: {result['metrics']['input_snr_db']:.2f}dB")
-            print(f"- Recovery SNR: {result['metrics']['output_snr_db']:.2f}dB")
-            print(f"- SNR improvement: {result['metrics']['improvement_db']:.2f}dB")
-            print(f"\nOutput files saved to: {system.output_dir}")
+            results = []
+            for i, input_file in enumerate(input_files, 1):
+                print(f"\n[{i}/{len(input_files)}] Processing: {input_file.name}")
+                try:
+                    result = system.process_audio_pair(str(input_file), mask_type=args.mask_type)
+                    results.append((input_file.name, result))
+                    print(f"✓ Completed: SNR improvement = {result['metrics']['improvement_db']:.2f}dB")
+                except Exception as e:
+                    print(f"✗ Failed: {e}")
+                    results.append((input_file.name, None))
             
-            if len(input_files) > 1:
-                print(f"\n💡 Tip: {len(input_files)-1} more files to process")
-                print("Use --batch dataset/input for batch processing")
+            # Summary 总结
+            successful = [r for r in results if r[1] is not None]
+            if successful:
+                avg_improvement = np.mean([r[1]['metrics']['improvement_db'] for r in successful])
+                print(f"\n📊 Processing Summary:")
+                print(f"- Total files: {len(input_files)}")
+                print(f"- Successful: {len(successful)}")
+                print(f"- Failed: {len(results) - len(successful)}")
+                print(f"- Average SNR improvement: {avg_improvement:.2f}dB")
+                print(f"\nOutput files saved to: {system.output_dir}")
         else:
             print("No input audio files found.")
             print("Please place audio files in dataset/input/ directory, or use:")
