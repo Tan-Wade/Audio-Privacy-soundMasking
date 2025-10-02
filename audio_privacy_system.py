@@ -163,15 +163,28 @@ class AudioPrivacySystem:
         x_new = np.linspace(0, 1, num=new_len, endpoint=False)
         return np.interp(x_new, x_old, data).astype(np.float32)
     
-    def generate_voice_like_mask(self, length: int, sr: int = None) -> np.ndarray:
+    def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "voice_like") -> np.ndarray:
         """
-        Generate voice-like masking noise
-        生成类语音掩蔽噪声
-        Based on paper recommendations, voice-style noise is more effective than white noise
+        Generate masking noise
+        生成掩蔽噪声
+        
+        Args:
+            length: Signal length
+            sr: Sample rate
+            mask_type: Type of masking noise ("voice_like", "multi_tone")
         """
         if sr is None:
             sr = self.sr
             
+        if mask_type == "voice_like":
+            return self._generate_voice_like_noise(length, sr)
+        elif mask_type == "multi_tone":
+            return self._generate_multi_tone_mask(length, sr)
+        else:
+            return self._generate_voice_like_noise(length, sr)
+    
+    def _generate_voice_like_noise(self, length: int, sr: int) -> np.ndarray:
+        """Original voice-like masking noise 原始的类语音掩蔽噪声"""
         # 1. Generate white noise 生成白噪声
         white_noise = np.random.randn(length).astype(np.float32)
         
@@ -188,6 +201,64 @@ class AudioPrivacySystem:
         voice_like = voice_like / (np.max(np.abs(voice_like)) + 1e-9)
         
         return voice_like.astype(np.float32)
+    
+    
+    def _generate_multi_tone_mask(self, length: int, sr: int) -> np.ndarray:
+        """Multi-tone masking with speech-like characteristics 多音调掩蔽"""
+        t = np.linspace(0, length / sr, length, endpoint=False)
+        mask = np.zeros(length, dtype=np.float32)
+        
+        # Generate multiple tones in speech frequency range 在语音频段生成多个音调
+        speech_tones = [300, 500, 800, 1200, 1800, 2500, 3200]  # Common speech frequencies
+        
+        for i, freq in enumerate(speech_tones):
+            # Add slight frequency modulation 添加轻微频率调制
+            fm_freq = 0.5 + i * 0.2
+            freq_mod = freq * (1 + 0.1 * np.sin(2 * np.pi * fm_freq * t))
+            
+            # Generate tone with amplitude modulation 生成带幅度调制的音调
+            amplitude = 0.8 + 0.4 * np.sin(2 * np.pi * (0.3 + i * 0.1) * t)
+            phase = 2 * np.pi * freq_mod * t + np.random.uniform(0, 2*np.pi)
+            
+            tone = amplitude * np.sin(phase)
+            mask += tone * 0.15
+        
+        # Add some filtered noise for texture 添加一些滤波噪声增加纹理
+        noise = np.random.randn(length).astype(np.float32)
+        filtered_noise = self._bandpass_filter(noise, sr)
+        mask += filtered_noise * 0.3
+        
+        # Normalize 归一化
+        mask = mask / (np.max(np.abs(mask)) + 1e-9)
+        
+        return mask.astype(np.float32)
+    
+    
+    def _bandpass_filter_custom(self, signal: np.ndarray, sr: int, low_freq: float, high_freq: float) -> np.ndarray:
+        """Custom bandpass filter with specific frequency range 自定义带通滤波器"""
+        numtaps = 257
+        nyq = sr / 2.0
+        f1 = low_freq / nyq
+        f2 = high_freq / nyq
+        
+        # Windowed sinc bandpass filter 窗口化sinc带通滤波器
+        n = np.arange(numtaps) - (numtaps - 1) / 2.0
+        
+        def sinc(x):
+            return np.sinc(x / np.pi)
+            
+        h = (2 * f2 * sinc(2 * np.pi * f2 * n) - 2 * f1 * sinc(2 * np.pi * f1 * n))
+        
+        # Hann window Hann窗
+        window = 0.5 * (1 - np.cos(2 * np.pi * np.arange(numtaps) / (numtaps - 1)))
+        h = h * window
+        
+        # Normalize 归一化
+        h = h / np.sum(h)
+        
+        # Apply filter 应用滤波器
+        filtered = np.convolve(signal, h, mode='same')
+        return filtered.astype(np.float32)
     
     def _bandpass_filter(self, signal: np.ndarray, sr: int) -> np.ndarray:
         """Simple bandpass filter (windowed sinc) 简单的带通滤波器（窗口化sinc）"""
@@ -332,7 +403,7 @@ class AudioPrivacySystem:
             
         return snr
     
-    def process_audio_pair(self, clean_path: str, output_prefix: str = "") -> dict:
+    def process_audio_pair(self, clean_path: str, output_prefix: str = "", mask_type: str = "voice_like") -> dict:
         """
         Process audio pair: clean speech -> masking -> mixing -> recovery
         处理音频对：干净语音 -> 掩蔽 -> 混合 -> 恢复
@@ -349,8 +420,8 @@ class AudioPrivacySystem:
         print(f"Loading clean speech: {clean_path}, length: {len(clean)/self.sr:.2f}s")
         
         # 2. Generate masking noise 生成掩蔽噪声
-        mask = self.generate_voice_like_mask(len(clean))
-        print("Generating voice-like masking noise")
+        mask = self.generate_voice_like_mask(len(clean), mask_type=mask_type)
+        print(f"Generating {mask_type} masking noise")
         
         # 3. Mix signals 混合信号
         mixed, scaled_mask = self.mix_signals(clean, mask)
@@ -390,9 +461,9 @@ class AudioPrivacySystem:
             
         # Save to new output directory 保存到新的输出目录
         clean_out = self.output_dir / f"{output_prefix}_clean.wav"
-        mask_out = self.output_dir / f"{output_prefix}_mask.wav"
-        mixed_out = self.output_dir / f"{output_prefix}_mixed.wav"
-        recovered_out = self.output_dir / f"{output_prefix}_recovered.wav"
+        mask_out = self.output_dir / f"{output_prefix}_mask_{mask_type}.wav"
+        mixed_out = self.output_dir / f"{output_prefix}_mixed_{mask_type}.wav"
+        recovered_out = self.output_dir / f"{output_prefix}_recovered_{mask_type}.wav"
         
         self.save_audio(clean_out, clean)
         self.save_audio(mask_out, scaled_mask)
@@ -450,6 +521,9 @@ def main():
     parser.add_argument('--batch', '-b', type=str, help='Batch processing directory path')
     parser.add_argument('--snr', type=float, default=0.0, help='Target SNR (dB)')
     parser.add_argument('--sample-rate', type=int, default=16000, help='Sample rate (Hz)')
+    parser.add_argument('--mask-type', type=str, default='voice_like', 
+                       choices=['voice_like', 'multi_tone'],
+                       help='Type of masking noise')
     
     args = parser.parse_args()
     
@@ -463,7 +537,7 @@ def main():
     if args.input:
         # Process single file 处理单个文件
         print(f"Processing single file: {args.input}")
-        result = system.process_audio_pair(args.input)
+        result = system.process_audio_pair(args.input, mask_type=args.mask_type)
         print(f"\nProcessing results:")
         print(f"- Input SNR: {result['metrics']['input_snr_db']:.2f}dB")
         print(f"- Recovery SNR: {result['metrics']['output_snr_db']:.2f}dB")
@@ -506,7 +580,7 @@ def main():
             print("Processing first file for demo...")
             
             first_file = input_files[0]
-            result = system.process_audio_pair(str(first_file))
+            result = system.process_audio_pair(str(first_file), mask_type=args.mask_type)
             print(f"\nProcessing results:")
             print(f"- File: {first_file.name}")
             print(f"- Input SNR: {result['metrics']['input_snr_db']:.2f}dB")

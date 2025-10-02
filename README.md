@@ -85,11 +85,17 @@ Sound-Masking/
 
 **示例**：
 ```bash
-# 处理单个文件
-python audio_privacy_system.py --input dataset/input/female-voice.m4a
+# 处理单个文件（使用多音调掩蔽）
+python audio_privacy_system.py --input dataset/input/female-voice.m4a --mask-type multi_tone
 
 # 批量处理
 python audio_privacy_system.py --batch dataset/input/
+
+# 使用原始掩蔽类型
+python audio_privacy_system.py --input dataset/input/file.wav --mask-type voice_like
+
+# 调整掩蔽强度
+python audio_privacy_system.py --input dataset/input/file.wav --snr -5.0
 ```
 
 ### 场景2：批量处理
@@ -133,6 +139,20 @@ system = AudioPrivacySystem(target_snr_db=0.0)
 # 弱掩蔽（SNR = 5dB）
 system = AudioPrivacySystem(target_snr_db=5.0)
 ```
+
+### 选择掩蔽类型
+
+```python
+# 原始类语音掩蔽（适合展示概念）
+result = system.process_audio_pair(input_file, mask_type="voice_like")
+
+# 多音调掩蔽（类似多个说话人）
+result = system.process_audio_pair(input_file, mask_type="multi_tone")
+```
+
+**掩蔽类型说明**：
+- `voice_like`: 原始类语音掩蔽，适合展示概念
+- `multi_tone`: 多音调掩蔽，类似多个说话人同时说话
 
 ### 调整恢复质量
 

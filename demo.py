@@ -36,7 +36,7 @@ def quick_demo():
         print(f"✓ Processing file: {first_file.name}")
         
         # Process audio 处理音频
-        result = system.process_audio_pair(str(first_file))
+        result = system.process_audio_pair(str(first_file), mask_type="multi_tone")
         
         print(f"\n📊 Processing Results:")
         print(f"   File: {first_file.name}")
