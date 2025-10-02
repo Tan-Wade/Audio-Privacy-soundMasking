@@ -10,7 +10,8 @@ Core Functions:
 3. Authorized parties use known parameters for reverse recovery
 4. Unauthorized parties can only hear mixed signals
 
-Author: Based on paper "Exploiting Sound Masking for Audio Privacy in Smartphones"
+To run this project, open the terminal and run the following command:
+python audio_privacy_system.py
 """
 
 import os
