@@ -1,0 +1,18 @@
+{
+  "system": {
+    "sample_rate": 16000,
+    "target_snr_db": 0.0,
+    "filter_order": 128,
+    "learning_rate": 0.01
+  },
+  "voice_params": {
+    "f0_range": [80, 300],
+    "formants": [800, 1200, 2500, 3500],
+    "speech_band": [200, 4000],
+    "syllable_rate": [2, 5]
+  },
+  "output": {
+    "directory": "./audio_outputs",
+    "prefix": "privacy_demo"
+  }
+}

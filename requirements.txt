@@ -1,0 +1,18 @@
+# 音频隐私保护系统依赖包
+# Audio Privacy Protection System Dependencies
+
+# 核心依赖
+numpy>=1.20.0
+scipy>=1.7.0
+
+# 音频处理
+soundfile>=0.10.0
+
+# 可选依赖（用于更高级的音频处理）
+# librosa>=0.8.0  # 音频特征提取
+# pystoi>=0.3.0   # STOI计算
+# pesq>=0.0.3     # PESQ计算
+
+# 开发和测试依赖
+# pytest>=6.0.0
+# matplotlib>=3.3.0  # 用于可视化
