@@ -1,61 +1,73 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Audio Privacy Protection System - Quick Demo Script
 音频隐私保护系统 - 快速演示脚本
-快速演示音频掩蔽和恢复功能
+Quick demonstration of audio masking and recovery functionality
 """
 
 import os
 import sys
 from pathlib import Path
 
-# 添加当前目录到Python路径
+# Add current directory to Python path
 sys.path.append(str(Path(__file__).parent))
 
 from audio_privacy_system import AudioPrivacySystem
 
 def quick_demo():
-    """快速演示功能"""
-    print("🎵 音频隐私保护系统 - 快速演示")
+    """Quick demo functionality 快速演示功能"""
+    print("🎵 Audio Privacy Protection System - Quick Demo")
     print("=" * 50)
     
-    # 初始化系统
+    # Initialize system 初始化系统
     system = AudioPrivacySystem(sample_rate=16000, target_snr_db=0.0)
     
-    # 检查现有文件
-    clean_file = "01_clean.wav"
+    # Check files in dataset/input directory 检查dataset/input目录中的文件
+    input_files = []
+    for ext in ['*.wav', '*.m4a', '*.mp3', '*.flac']:
+        input_files.extend(system.input_dir.glob(ext))
     
-    if os.path.exists(clean_file):
-        print(f"✓ 发现现有音频文件: {clean_file}")
-        print("开始处理...")
+    if input_files:
+        print(f"✓ Found {len(input_files)} input audio files")
+        print("Processing first file for demo...")
         
-        # 处理音频
-        result = system.process_audio_pair(clean_file, "demo")
+        first_file = input_files[0]
+        print(f"✓ Processing file: {first_file.name}")
         
-        print(f"\n📊 处理结果:")
-        print(f"   输入SNR: {result['metrics']['input_snr_db']:.2f} dB")
-        print(f"   恢复后SNR: {result['metrics']['output_snr_db']:.2f} dB")
-        print(f"   SNR改善: {result['metrics']['improvement_db']:.2f} dB")
+        # Process audio 处理音频
+        result = system.process_audio_pair(str(first_file))
         
-        print(f"\n📁 输出文件:")
+        print(f"\n📊 Processing Results:")
+        print(f"   File: {first_file.name}")
+        print(f"   Input SNR: {result['metrics']['input_snr_db']:.2f} dB")
+        print(f"   Recovery SNR: {result['metrics']['output_snr_db']:.2f} dB")
+        print(f"   SNR improvement: {result['metrics']['improvement_db']:.2f} dB")
+        
+        print(f"\n📁 Output Files:")
         for key, path in result['output_files'].items():
             print(f"   {key}: {path}")
             
+        if len(input_files) > 1:
+            print(f"\n💡 Tip: {len(input_files)-1} more files to process")
+            print("Use the following command for batch processing:")
+            print("   python audio_privacy_system.py --batch dataset/input")
+            
     else:
-        print("⚠️  未发现现有音频文件")
-        print("请将你的8位数字录音文件命名为 '01_clean.wav' 并放在项目根目录，然后重新运行。")
-        print("\n💡 使用说明:")
-        print("1. 录制一段包含8位数字的语音")
-        print("2. 将文件重命名为 '01_clean.wav'")
-        print("3. 放在项目根目录")
-        print("4. 重新运行此脚本")
+        print("⚠️  No input audio files found")
+        print("Please place your audio files in dataset/input/ directory and run again.")
+        print("\n💡 Usage instructions:")
+        print("1. Record speech containing 8-digit numbers")
+        print("2. Place files in dataset/input/ directory")
+        print("3. Run this script again")
+        print("\nSupported audio formats: .wav, .m4a, .mp3, .flac")
     
-    print(f"\n🎯 系统说明:")
-    print("1. 干净语音: 原始清晰的语音信号")
-    print("2. 掩蔽噪声: 类语音样式的噪声，用于掩盖原始语音")
-    print("3. 混合信号: 被监听方录到的声音（含混不清）")
-    print("4. 恢复信号: 授权方使用已知参数恢复的清晰语音")
-    print("\n💡 核心原理: 只有授权方知道掩蔽噪声的精确参数，可以反向恢复原始语音")
+    print(f"\n🎯 System Description:")
+    print("1. Clean speech: Original clear speech signal")
+    print("2. Masking noise: Voice-like noise used to mask original speech")
+    print("3. Mixed signal: What eavesdroppers would record (unclear)")
+    print("4. Recovered signal: Clear speech recovered by authorized parties")
+    print("\n💡 Core principle: Only authorized parties know the exact masking parameters to reverse recovery")
 
 if __name__ == "__main__":
     quick_demo()

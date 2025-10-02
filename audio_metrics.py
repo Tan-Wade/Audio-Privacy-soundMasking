@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-音频质量评估模块
 Audio Quality Metrics Module
+音频质量评估模块
 
+Provides various audio quality assessment metrics including SNR, PESQ, STOI, etc.
 提供多种音频质量评估指标，包括SNR、PESQ、STOI等
 """
 
@@ -13,7 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class AudioMetrics:
-    """音频质量评估类"""
+    """Audio Quality Assessment Class 音频质量评估类"""
     
     def __init__(self, sample_rate: int = 16000):
         self.sr = sample_rate
