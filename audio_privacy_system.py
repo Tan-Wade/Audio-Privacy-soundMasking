@@ -18,9 +18,13 @@ import os
 import sys
 import numpy as np
 from pathlib import Path
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 import argparse
 import warnings
+import json
+import secrets
+import time
+import uuid
 warnings.filterwarnings('ignore')
 
 # Import audio quality metrics module
@@ -45,7 +49,7 @@ except ImportError:
 class AudioPrivacySystem:
     """Audio Privacy Protection System Main Class 音频隐私保护系统主类"""
     
-    def __init__(self, sample_rate: int = 16000, target_snr_db: float = 0.0):
+    def __init__(self, sample_rate: int = 16000, target_snr_db: float = 0.0, production_mode: bool = False):
         """
         Initialize Audio Privacy Protection System
         初始化音频隐私保护系统
@@ -53,9 +57,11 @@ class AudioPrivacySystem:
         Args:
             sample_rate: Sample rate, default 16kHz (suitable for speech)
             target_snr_db: Target SNR, default 0dB (strong masking effect)
+            production_mode: Production mode, if True, will not save mask audio files
         """
         self.sr = sample_rate
         self.target_snr_db = target_snr_db
+        self.production_mode = production_mode
         
         # Setup input/output directories 设置输入输出目录
         self.dataset_dir = Path("./dataset")
@@ -164,7 +170,7 @@ class AudioPrivacySystem:
         x_new = np.linspace(0, 1, num=new_len, endpoint=False)
         return np.interp(x_new, x_old, data).astype(np.float32)
     
-    def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "multi_tone") -> np.ndarray:
+    def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "multi_tone", seed: int = None) -> np.ndarray:
         """
         Generate masking noise
         生成掩蔽噪声
@@ -173,9 +179,14 @@ class AudioPrivacySystem:
             length: Signal length
             sr: Sample rate
             mask_type: Type of masking noise ("voice_like", "multi_tone")
+            seed: Random seed for reproducibility (if None, use random seed)
         """
         if sr is None:
             sr = self.sr
+        
+        # Set random seed for reproducibility
+        if seed is not None:
+            np.random.seed(seed)
             
         if mask_type == "voice_like":
             return self._generate_voice_like_noise(length, sr)
@@ -408,6 +419,103 @@ class AudioPrivacySystem:
             
         return snr
     
+    def generate_mask_params(self, length: int, scale_factor: float, mask_type: str = "multi_tone", 
+                            identifier: str = None) -> Dict:
+        """
+        Generate masking parameters for transmission to authorized party
+        生成掩蔽参数以传输给授权方
+        
+        Args:
+            length: Audio length (number of samples)
+            scale_factor: Scale factor for mask signal
+            mask_type: Type of masking noise
+            identifier: Optional unique identifier for this communication
+            
+        Returns:
+            Dictionary containing all parameters needed to regenerate mask
+        """
+        # Generate cryptographically secure random seed
+        seed = secrets.randbits(32)
+        
+        # Generate unique identifier if not provided
+        if identifier is None:
+            identifier = str(uuid.uuid4())
+        
+        # Current timestamp
+        timestamp = int(time.time())
+        
+        mask_params = {
+            # Core generation parameters
+            'seed': seed,
+            'length': length,
+            'sample_rate': self.sr,
+            'mask_type': mask_type,
+            'scale_factor': float(scale_factor),
+            
+            # Security and tracking fields
+            'timestamp': timestamp,
+            'identifier': identifier,
+            
+            # Additional metadata
+            'version': '1.0',
+            'target_snr_db': self.target_snr_db
+        }
+        
+        return mask_params
+    
+    def regenerate_mask_from_params(self, mask_params: Dict) -> np.ndarray:
+        """
+        Regenerate masking noise from parameters (used by authorized party)
+        根据参数重新生成掩蔽噪声（授权方使用）
+        
+        Args:
+            mask_params: Dictionary containing mask generation parameters
+            
+        Returns:
+            Regenerated mask signal
+        """
+        # Extract parameters
+        seed = mask_params['seed']
+        length = mask_params['length']
+        sr = mask_params['sample_rate']
+        mask_type = mask_params['mask_type']
+        scale_factor = mask_params['scale_factor']
+        
+        # Regenerate mask with same seed
+        mask = self.generate_voice_like_mask(length, sr, mask_type, seed=seed)
+        
+        # Apply scale factor
+        scaled_mask = mask * scale_factor
+        
+        return scaled_mask
+    
+    def save_mask_params(self, mask_params: Dict, output_path: str):
+        """
+        Save masking parameters to JSON file
+        保存掩蔽参数到JSON文件
+        
+        Args:
+            mask_params: Masking parameters dictionary
+            output_path: Output file path
+        """
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(mask_params, f, indent=2, ensure_ascii=False)
+    
+    def load_mask_params(self, params_path: str) -> Dict:
+        """
+        Load masking parameters from JSON file
+        从JSON文件加载掩蔽参数
+        
+        Args:
+            params_path: Parameters file path
+            
+        Returns:
+            Masking parameters dictionary
+        """
+        with open(params_path, 'r', encoding='utf-8') as f:
+            mask_params = json.load(f)
+        return mask_params
+    
     def process_audio_pair(self, clean_path: str, output_prefix: str = "", mask_type: str = "voice_like") -> dict:
         """
         Process audio pair: clean speech -> masking -> mixing -> recovery
@@ -424,19 +532,35 @@ class AudioPrivacySystem:
         clean, _ = self.load_audio(clean_path)
         print(f"Loading clean speech: {clean_path}, length: {len(clean)/self.sr:.2f}s")
         
-        # 2. Generate masking noise 生成掩蔽噪声
-        mask = self.generate_voice_like_mask(len(clean), mask_type=mask_type)
-        print(f"Generating {mask_type} masking noise")
+        # 2. Generate random seed for this session
+        seed = secrets.randbits(32)
         
-        # 3. Mix signals 混合信号
+        # 3. Generate masking noise with seed 生成掩蔽噪声
+        mask = self.generate_voice_like_mask(len(clean), mask_type=mask_type, seed=seed)
+        print(f"Generating {mask_type} masking noise (seed: {seed})")
+        
+        # 4. Mix signals 混合信号
         mixed, scaled_mask = self.mix_signals(clean, mask)
         print(f"Mixing signals, target SNR: {self.target_snr_db:.1f}dB")
         
-        # 4. Authorized recovery 授权恢复
+        # 5. Calculate scale factor
+        mask_rms = np.sqrt(np.mean(mask ** 2) + 1e-12)
+        scaled_mask_rms = np.sqrt(np.mean(scaled_mask ** 2) + 1e-12)
+        scale_factor = scaled_mask_rms / mask_rms if mask_rms > 1e-12 else 1.0
+        
+        # 6. Generate mask parameters (for transmission to authorized party)
+        mask_params = self.generate_mask_params(
+            length=len(clean),
+            scale_factor=scale_factor,
+            mask_type=mask_type
+        )
+        print(f"Generated mask parameters (identifier: {mask_params['identifier']})")
+        
+        # 7. Authorized recovery 授权恢复
         recovered, filter_taps = self.lms_recovery(mixed, scaled_mask)
         print("Executing LMS authorized recovery")
         
-        # 5. Calculate performance metrics 计算性能指标
+        # 8. Calculate performance metrics 计算性能指标
         snr_input = self.calculate_snr(clean, scaled_mask)
         snr_after = self.calculate_snr(clean, recovered - clean)
         improvement = snr_after - snr_input
@@ -445,7 +569,7 @@ class AudioPrivacySystem:
         print(f"Recovery SNR: {snr_after:.2f}dB")
         print(f"SNR improvement: {improvement:.2f}dB")
         
-        # 6. Detailed quality assessment (if available) 详细质量评估
+        # 9. Detailed quality assessment (if available) 详细质量评估
         if self.metrics_calc:
             print("\n📊 Detailed Quality Assessment:")
             mixed_metrics = self.metrics_calc.calculate_all_metrics(clean, mixed)
@@ -460,7 +584,7 @@ class AudioPrivacySystem:
             print(f"  - STOI: {recovery_metrics['stoi']:.3f}")
             print(f"  - Signal preservation: {recovery_metrics['signal_preservation']:.3f}")
         
-        # 7. Save files 保存文件
+        # 10. Save files 保存文件
         if not output_prefix:
             output_prefix = Path(clean_path).stem
             
@@ -469,21 +593,38 @@ class AudioPrivacySystem:
         mask_out = self.output_dir / f"{output_prefix}_mask_{mask_type}.wav"
         mixed_out = self.output_dir / f"{output_prefix}_mixed_{mask_type}.wav"
         recovered_out = self.output_dir / f"{output_prefix}_recovered_{mask_type}.wav"
+        params_out = self.output_dir / f"{output_prefix}_mask_params_{mask_type}.json"
         
         self.save_audio(clean_out, clean)
-        self.save_audio(mask_out, scaled_mask)
         self.save_audio(mixed_out, mixed)
         self.save_audio(recovered_out, recovered)
         
-        # 8. Return results 返回结果
+        # Save mask audio only in non-production mode (for demo/debugging)
+        if not self.production_mode:
+            self.save_audio(mask_out, scaled_mask)
+            print(f"Saved mask audio (demo mode): {mask_out.name}")
+        else:
+            print("Production mode: mask audio not saved (use mask_params instead)")
+        
+        # Always save mask parameters (for transmission to authorized party)
+        self.save_mask_params(mask_params, params_out)
+        print(f"Saved mask parameters: {params_out.name}")
+        
+        # 11. Return results 返回结果
+        output_files = {
+            'clean': str(clean_out),
+            'mixed': str(mixed_out),
+            'recovered': str(recovered_out),
+            'mask_params': str(params_out)
+        }
+        
+        # Only include mask audio file path in non-production mode
+        if not self.production_mode:
+            output_files['mask'] = str(mask_out)
+        
         results = {
             'input_file': clean_path,
-            'output_files': {
-                'clean': str(clean_out),
-                'mask': str(mask_out),
-                'mixed': str(mixed_out),
-                'recovered': str(recovered_out)
-            },
+            'output_files': output_files,
             'metrics': {
                 'input_snr_db': snr_input,
                 'output_snr_db': snr_after,
@@ -495,7 +636,9 @@ class AudioPrivacySystem:
                 'target_snr_db': self.target_snr_db,
                 'filter_order': 128,
                 'learning_rate': 0.01
-            }
+            },
+            'mask_params': mask_params,
+            'production_mode': self.production_mode
         }
         
         return results
@@ -521,6 +664,20 @@ class AudioPrivacySystem:
 
 def main():
     """Main function - Audio Privacy Protection System 主函数 - 音频隐私保护系统"""
+    
+    # ========== ENVIRONMENT CONFIGURATION 环境配置 ==========
+    # You can manually change this value: "dev" or "prod"
+    # 您可以手动修改此值："dev" 或 "prod"
+    ENVIRONMENT = "dev"  # Options: "dev" or "prod"
+    # ========================================================
+    
+    # Validate environment 验证环境变量
+    if ENVIRONMENT not in ["dev", "prod"]:
+        raise ValueError(f"Invalid ENVIRONMENT value: {ENVIRONMENT}. Must be 'dev' or 'prod'.")
+    
+    # Set production mode based on environment
+    production_mode = (ENVIRONMENT == "prod")
+    
     parser = argparse.ArgumentParser(description='Audio Privacy Protection System')
     parser.add_argument('--input', '-i', type=str, help='Input audio file path')
     parser.add_argument('--batch', '-b', type=str, help='Batch processing directory path')
@@ -534,10 +691,16 @@ def main():
     
     print("=== Audio Privacy Protection System ===")
     print("Based on sound masking techniques for smartphone audio privacy")
+    print(f"Environment: {ENVIRONMENT.upper()}")
+    if production_mode:
+        print("🔒 Production Mode: Mask audio will not be saved (only parameters)")
+    else:
+        print("🔧 Dev Mode: All files including mask audio will be saved")
     print()
     
     # Initialize system 初始化系统
-    system = AudioPrivacySystem(sample_rate=args.sample_rate, target_snr_db=args.snr)
+    system = AudioPrivacySystem(sample_rate=args.sample_rate, target_snr_db=args.snr, 
+                               production_mode=production_mode)
     
     if args.input:
         # Process single file 处理单个文件

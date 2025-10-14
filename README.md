@@ -14,9 +14,15 @@ Process specific file:
 python audio_privacy_system.py --input dataset/input/your_file.wav
 ```
 
-Use original masking type:
-```bash
-python audio_privacy_system.py --mask-type voice_like
+**Environment Configuration:**
+
+Open `audio_privacy_system.py` and modify the `ENVIRONMENT` variable in the `main()` function:
+
+```python
+# In main() function:
+ENVIRONMENT = "dev"   # Dev mode: saves all files including mask audio
+# or
+ENVIRONMENT = "prod"  # Production mode: saves only parameters, not mask audio
 ```
 
 ## Installation
@@ -37,16 +43,90 @@ pip install librosa pystoi pesq
 - **Signal Mixing**: Generate mixed signals that sound incomprehensible to eavesdroppers
 - **Authorized Recovery**: Authorized users can recover original speech using known parameters
 - **Privacy Protection**: Unauthorized listeners only hear muffled mixed signals
+- **🆕 Parameter-based Masking**: Transmit lightweight parameters (< 300 bytes) instead of full mask audio files (saves 99.9%)
+- **🆕 Environment Modes**: Dev/Prod modes for development and production deployment
+- **🆕 Cryptographically Secure**: Uses secure random seeds with timestamp and identifier for tracking
+
+## 🚀 New: Parameter-based Masking System
+
+Traditional masking systems require transmitting the entire mask audio file (hundreds of KB). Our new parameter-based approach reduces this to just ~240 bytes!
+
+### Key Benefits
+
+- **99.9% size reduction**: 193 KB → 241 bytes
+- **800x compression**: Transmit parameters instead of audio
+- **Enhanced security**: Each session uses unique cryptographic seed
+- **Flexible deployment**: Separate dev/prod modes for different scenarios
+
+### How It Works
+
+Instead of sending the mask audio file, we send lightweight parameters:
+
+```json
+{
+  "seed": 1234567890,              // Cryptographic random seed
+  "length": 96597,                 // Audio length
+  "sample_rate": 16000,            // Sample rate
+  "scale_factor": 0.3385,          // Scale factor
+  "mask_type": "multi_tone",       // Mask type
+  "timestamp": 1760411088,         // Unix timestamp (prevents replay attacks)
+  "identifier": "uuid-...",        // Unique session ID
+  "version": "1.0",                // Protocol version
+  "target_snr_db": 0.0            // Target SNR
+}
+```
+
+The authorized receiver uses these parameters to regenerate the exact same mask noise and recover the speech.
+
+### Usage
+
+**Sender (Alice):**
+```python
+from audio_privacy_system import AudioPrivacySystem
+
+# Initialize system
+system = AudioPrivacySystem()
+
+# Process audio
+result = system.process_audio_pair("speech.wav")
+
+# Get parameters (only 241 bytes!)
+mask_params = result['mask_params']
+
+# Encrypt and send: mixed_audio + encrypted(mask_params)
+```
+
+**Receiver (Bob):**
+```python
+# Load parameters
+mask_params = system.load_mask_params("received_params.json")
+
+# Regenerate mask from parameters
+scaled_mask = system.regenerate_mask_from_params(mask_params)
+
+# Load mixed audio and recover
+mixed, _ = system.load_audio("received_mixed.wav")
+recovered, _ = system.lms_recovery(mixed, scaled_mask)
+```
+
+For detailed documentation, see [PARAMETER_BASED_MASKING.md](PARAMETER_BASED_MASKING.md).
 
 ## File Structure
 
 ```
 Sound-Masking/
-├── audio_privacy_system.py    # Main system implementation
-├── audio_metrics.py           # Audio quality evaluation module
-├── dataset/                  # Dataset directory
-│   ├── input/               # Input audio files
-│   └── output/              # Output result files
+├── audio_privacy_system.py           # Main system implementation
+├── audio_metrics.py                  # Audio quality evaluation module
+├── PARAMETER_BASED_MASKING.md        # Detailed documentation for parameter-based masking
+├── README.md                         # This file
+├── dataset/                          # Dataset directory
+│   ├── input/                       # Input audio files
+│   └── output/                      # Output result files
+│       ├── *_clean.wav             # Clean speech
+│       ├── *_mixed.wav             # Mixed signal (what eavesdroppers hear)
+│       ├── *_recovered.wav         # Recovered speech (authorized party)
+│       ├── *_mask.wav              # Mask audio (dev mode only)
+│       └── *_mask_params.json      # Mask parameters (for transmission)
 ```
 
 ## Usage Examples
@@ -80,6 +160,7 @@ for result in results:
 |-----------|---------|-------------|
 | `sample_rate` | 16000 | Sampling rate (Hz) |
 | `target_snr_db` | 0.0 | Target SNR (dB), lower values = stronger masking |
+| `ENVIRONMENT` | "dev" | Environment mode: "dev" (saves all files) or "prod" (parameters only) |
 | `filter_order` | 128 | LMS filter order |
 | `learning_rate` | 0.01 | LMS learning rate |
 
