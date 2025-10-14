@@ -34,6 +34,14 @@ try:
 except ImportError:
     HAVE_METRICS = False
 
+# Import hybrid encryption module
+try:
+    from encryption_module import HybridEncryption
+    HAVE_ENCRYPTION = True
+except ImportError:
+    HAVE_ENCRYPTION = False
+    print("Warning: Encryption module not available. Install cryptography: pip install cryptography")
+
 # Audio processing dependencies
 try:
     import soundfile as sf
@@ -49,7 +57,8 @@ except ImportError:
 class AudioPrivacySystem:
     """Audio Privacy Protection System Main Class 音频隐私保护系统主类"""
     
-    def __init__(self, sample_rate: int = 16000, target_snr_db: float = 0.0, production_mode: bool = False):
+    def __init__(self, sample_rate: int = 16000, target_snr_db: float = 0.0, production_mode: bool = False, 
+                 enable_encryption: bool = False):
         """
         Initialize Audio Privacy Protection System
         初始化音频隐私保护系统
@@ -58,23 +67,30 @@ class AudioPrivacySystem:
             sample_rate: Sample rate, default 16kHz (suitable for speech)
             target_snr_db: Target SNR, default 0dB (strong masking effect)
             production_mode: Production mode, if True, will not save mask audio files
+            enable_encryption: Enable hybrid encryption for mask parameters
         """
         self.sr = sample_rate
         self.target_snr_db = target_snr_db
         self.production_mode = production_mode
+        self.enable_encryption = enable_encryption
         
         # Setup input/output directories 设置输入输出目录
         self.dataset_dir = Path("./dataset")
         self.input_dir = self.dataset_dir / "input"
         self.output_dir = self.dataset_dir / "output"
+        self.keys_dir = self.dataset_dir / "keys"
         
         # Create directories 创建目录
         self.dataset_dir.mkdir(exist_ok=True)
         self.input_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
+        self.keys_dir.mkdir(exist_ok=True)
         
         # Initialize audio quality evaluator 初始化音频质量评估器
         self.metrics_calc = AudioMetrics(sample_rate) if HAVE_METRICS else None
+        
+        # Initialize encryption module 初始化加密模块
+        self.crypto = HybridEncryption() if (HAVE_ENCRYPTION and enable_encryption) else None
         
         # Voice feature parameters 语音特征参数
         self.voice_params = {
@@ -489,34 +505,61 @@ class AudioPrivacySystem:
         
         return scaled_mask
     
-    def save_mask_params(self, mask_params: Dict, output_path: str):
+    def save_mask_params(self, mask_params: Dict, output_path: str, receiver_public_key: str = None):
         """
-        Save masking parameters to JSON file
-        保存掩蔽参数到JSON文件
+        Save masking parameters to JSON file (with optional encryption)
+        保存掩蔽参数到JSON文件（可选加密）
         
         Args:
             mask_params: Masking parameters dictionary
             output_path: Output file path
+            receiver_public_key: Receiver's public key path (for encryption)
         """
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(mask_params, f, indent=2, ensure_ascii=False)
+        # If encryption is enabled and public key is provided
+        if self.enable_encryption and self.crypto and receiver_public_key:
+            # Use hybrid encryption
+            encrypted_package = self.crypto.hybrid_encrypt(mask_params, receiver_public_key)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(encrypted_package, f, indent=2, ensure_ascii=False)
+            print(f"🔒 参数已加密保存（混合加密：RSA+AES）")
+        else:
+            # Save as plain JSON
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(mask_params, f, indent=2, ensure_ascii=False)
     
-    def load_mask_params(self, params_path: str) -> Dict:
+    def load_mask_params(self, params_path: str, receiver_private_key: str = None) -> Dict:
         """
-        Load masking parameters from JSON file
-        从JSON文件加载掩蔽参数
+        Load masking parameters from JSON file (with optional decryption)
+        从JSON文件加载掩蔽参数（可选解密）
         
         Args:
             params_path: Parameters file path
+            receiver_private_key: Receiver's private key path (for decryption)
             
         Returns:
             Masking parameters dictionary
         """
         with open(params_path, 'r', encoding='utf-8') as f:
-            mask_params = json.load(f)
-        return mask_params
+            data = json.load(f)
+        
+        # Check if data is encrypted
+        if 'encryption_method' in data and 'encrypted_session_key' in data:
+            # Data is encrypted, need to decrypt
+            if not self.crypto:
+                raise RuntimeError("加密模块未加载，无法解密。请安装：pip install cryptography")
+            if not receiver_private_key:
+                raise ValueError("数据已加密，需要提供接收方私钥路径进行解密")
+            
+            print("🔓 检测到加密数据，正在解密...")
+            mask_params = self.crypto.hybrid_decrypt(data, receiver_private_key)
+            print("✓ 解密成功")
+            return mask_params
+        else:
+            # Data is plain JSON
+            return data
     
-    def process_audio_pair(self, clean_path: str, output_prefix: str = "", mask_type: str = "voice_like") -> dict:
+    def process_audio_pair(self, clean_path: str, output_prefix: str = "", mask_type: str = "voice_like",
+                           receiver_public_key: str = None) -> dict:
         """
         Process audio pair: clean speech -> masking -> mixing -> recovery
         处理音频对：干净语音 -> 掩蔽 -> 混合 -> 恢复
@@ -607,7 +650,7 @@ class AudioPrivacySystem:
             print("Production mode: mask audio not saved (use mask_params instead)")
         
         # Always save mask parameters (for transmission to authorized party)
-        self.save_mask_params(mask_params, params_out)
+        self.save_mask_params(mask_params, params_out, receiver_public_key)
         print(f"Saved mask parameters: {params_out.name}")
         
         # 11. Return results 返回结果
@@ -660,6 +703,91 @@ class AudioPrivacySystem:
                 
         return results
     
+    def authorized_recovery(self, mixed_audio_path: str, params_path: str, output_path: str,
+                           receiver_private_key: str = None) -> dict:
+        """
+        Authorized party recovery: Use mask parameters to recover clean audio from mixed audio
+        授权方恢复：使用掩蔽参数从混合音频中恢复干净音频
+        
+        Args:
+            mixed_audio_path: Mixed audio file path
+            params_path: Mask parameters file path (may be encrypted)
+            output_path: Output recovered audio file path
+            receiver_private_key: Receiver's private key path (for decryption if needed)
+            
+        Returns:
+            Recovery results dictionary
+        """
+        print("=== 授权方恢复流程 ===")
+        
+        # 1. Load mixed audio 加载混合音频
+        print(f"1. 加载混合音频: {mixed_audio_path}")
+        mixed, _ = self.load_audio(mixed_audio_path)
+        
+        # 2. Load and decrypt (if needed) mask parameters 加载并解密（如需要）掩蔽参数
+        print(f"2. 加载掩蔽参数: {params_path}")
+        mask_params = self.load_mask_params(params_path, receiver_private_key)
+        
+        # 3. Regenerate mask from parameters 根据参数重新生成掩蔽信号
+        print("3. 根据参数重新生成掩蔽信号...")
+        scaled_mask = self.regenerate_mask_from_params(mask_params)
+        
+        # 4. LMS recovery LMS恢复
+        print("4. 执行LMS自适应恢复...")
+        recovered, filter_taps = self.lms_recovery(mixed, scaled_mask)
+        
+        # 5. Save recovered audio 保存恢复的音频
+        print(f"5. 保存恢复的音频: {output_path}")
+        self.save_audio(output_path, recovered)
+        
+        print("✓ 授权恢复完成！")
+        
+        # 6. Return results 返回结果
+        results = {
+            'mixed_audio': mixed_audio_path,
+            'params_file': params_path,
+            'recovered_audio': output_path,
+            'mask_params': mask_params,
+            'encrypted': 'encryption_method' in open(params_path, 'r').read()
+        }
+        
+        return results
+    
+    def generate_keypair_for_receiver(self, receiver_name: str = "receiver") -> dict:
+        """
+        Generate RSA keypair for receiver
+        为接收方生成RSA密钥对
+        
+        Args:
+            receiver_name: Receiver identifier name
+            
+        Returns:
+            Keypair information dictionary
+        """
+        if not self.crypto:
+            raise RuntimeError("加密模块未加载。请安装：pip install cryptography")
+        
+        print(f"=== 生成接收方密钥对: {receiver_name} ===")
+        
+        # Generate keypair
+        private_pem, public_pem = self.crypto.generate_rsa_keypair(2048)
+        
+        # Save to keys directory
+        private_path = self.keys_dir / f"{receiver_name}_private.pem"
+        public_path = self.keys_dir / f"{receiver_name}_public.pem"
+        
+        self.crypto.save_keypair(private_pem, public_pem, str(private_path), str(public_path))
+        
+        print(f"✓ 私钥已保存: {private_path}")
+        print(f"✓ 公钥已保存: {public_path}")
+        print(f"⚠️  警告: 请妥善保管私钥文件！")
+        
+        return {
+            'private_key': str(private_path),
+            'public_key': str(public_path),
+            'receiver_name': receiver_name
+        }
+    
 
 
 def main():
@@ -687,6 +815,26 @@ def main():
                        choices=['voice_like', 'multi_tone'],
                        help='Type of masking noise')
     
+    # Encryption related arguments 加密相关参数
+    parser.add_argument('--enable-encryption', action='store_true', 
+                       help='Enable hybrid encryption for mask parameters')
+    parser.add_argument('--generate-keypair', type=str, 
+                       help='Generate RSA keypair for specified receiver name')
+    parser.add_argument('--public-key', type=str, 
+                       help='Receiver public key path (for encryption)')
+    parser.add_argument('--private-key', type=str, 
+                       help='Receiver private key path (for decryption)')
+    
+    # Recovery mode arguments 恢复模式参数
+    parser.add_argument('--recover', action='store_true',
+                       help='Recovery mode: recover clean audio from mixed audio')
+    parser.add_argument('--mixed-audio', type=str,
+                       help='Mixed audio file path (for recovery mode)')
+    parser.add_argument('--params-file', type=str,
+                       help='Mask parameters file path (for recovery mode)')
+    parser.add_argument('--output', '-o', type=str,
+                       help='Output file path (for recovery mode)')
+    
     args = parser.parse_args()
     
     print("=== Audio Privacy Protection System ===")
@@ -696,16 +844,47 @@ def main():
         print("🔒 Production Mode: Mask audio will not be saved (only parameters)")
     else:
         print("🔧 Dev Mode: All files including mask audio will be saved")
+    if args.enable_encryption:
+        print("🔐 Encryption: Enabled (Hybrid RSA+AES)")
     print()
     
     # Initialize system 初始化系统
     system = AudioPrivacySystem(sample_rate=args.sample_rate, target_snr_db=args.snr, 
-                               production_mode=production_mode)
+                               production_mode=production_mode, enable_encryption=args.enable_encryption)
+    
+    # Handle keypair generation 处理密钥对生成
+    if args.generate_keypair:
+        keypair_info = system.generate_keypair_for_receiver(args.generate_keypair)
+        print("\n提示：")
+        print("- 发送方使用公钥加密参数")
+        print("- 接收方使用私钥解密参数")
+        return
+    
+    # Handle recovery mode 处理恢复模式
+    if args.recover:
+        if not args.mixed_audio or not args.params_file or not args.output:
+            print("错误：恢复模式需要指定 --mixed-audio, --params-file 和 --output")
+            return
+        
+        result = system.authorized_recovery(
+            args.mixed_audio,
+            args.params_file,
+            args.output,
+            args.private_key
+        )
+        
+        print("\n恢复结果:")
+        print(f"- 混合音频: {result['mixed_audio']}")
+        print(f"- 参数文件: {result['params_file']}")
+        print(f"- 恢复音频: {result['recovered_audio']}")
+        print(f"- 是否加密: {'是' if result['encrypted'] else '否'}")
+        return
     
     if args.input:
         # Process single file 处理单个文件
         print(f"Processing single file: {args.input}")
-        result = system.process_audio_pair(args.input, mask_type=args.mask_type)
+        result = system.process_audio_pair(args.input, mask_type=args.mask_type, 
+                                          receiver_public_key=args.public_key)
         print(f"\nProcessing results:")
         print(f"- Input SNR: {result['metrics']['input_snr_db']:.2f}dB")
         print(f"- Recovery SNR: {result['metrics']['output_snr_db']:.2f}dB")

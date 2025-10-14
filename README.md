@@ -29,7 +29,12 @@ ENVIRONMENT = "prod"  # Production mode: saves only parameters, not mask audio
 
 Install required dependencies:
 ```bash
-pip install numpy soundfile scipy
+pip install -r requirements.txt
+```
+
+Or install manually:
+```bash
+pip install numpy soundfile scipy cryptography
 ```
 
 Optional packages for advanced audio metrics:
@@ -46,6 +51,7 @@ pip install librosa pystoi pesq
 - **🆕 Parameter-based Masking**: Transmit lightweight parameters (< 300 bytes) instead of full mask audio files (saves 99.9%)
 - **🆕 Environment Modes**: Dev/Prod modes for development and production deployment
 - **🆕 Cryptographically Secure**: Uses secure random seeds with timestamp and identifier for tracking
+- **🔒 Hybrid Encryption**: RSA-2048 + AES-256-GCM encryption for mask parameters (NEW!)
 
 ## 🚀 New: Parameter-based Masking System
 
@@ -111,22 +117,54 @@ recovered, _ = system.lms_recovery(mixed, scaled_mask)
 
 For detailed documentation, see [PARAMETER_BASED_MASKING.md](PARAMETER_BASED_MASKING.md).
 
+## 🔐 Hybrid Encryption (Optional)
+
+Protect mask parameters with RSA-2048 + AES-256-GCM encryption:
+
+```bash
+# 1. Generate receiver's keypair
+python audio_privacy_system.py --enable-encryption --generate-keypair alice
+
+# 2. Sender: Encrypt parameters with receiver's public key
+python audio_privacy_system.py --enable-encryption \
+  --public-key dataset/keys/alice_public.pem \
+  --input dataset/input/voice.wav
+
+# 3. Receiver: Decrypt and recover
+python audio_privacy_system.py --enable-encryption --recover \
+  --mixed-audio dataset/output/*_mixed.wav \
+  --params-file dataset/output/*_mask_params.json \
+  --private-key dataset/keys/alice_private.pem \
+  --output recovered.wav
+
+# Or run the demo
+python demo_encryption.py
+```
+
+**Security**: Only the receiver with the private key can decrypt parameters and recover audio. Encrypted params are ~640 bytes (vs ~240 bytes plain).
+
 ## File Structure
 
 ```
 Sound-Masking/
 ├── audio_privacy_system.py           # Main system implementation
 ├── audio_metrics.py                  # Audio quality evaluation module
+├── encryption_module.py              # Hybrid encryption module (RSA+AES)
+├── demo_encryption.py                # Encryption demo script
+├── requirements.txt                  # Python dependencies
 ├── PARAMETER_BASED_MASKING.md        # Detailed documentation for parameter-based masking
 ├── README.md                         # This file
 ├── dataset/                          # Dataset directory
 │   ├── input/                       # Input audio files
-│   └── output/                      # Output result files
-│       ├── *_clean.wav             # Clean speech
-│       ├── *_mixed.wav             # Mixed signal (what eavesdroppers hear)
-│       ├── *_recovered.wav         # Recovered speech (authorized party)
-│       ├── *_mask.wav              # Mask audio (dev mode only)
-│       └── *_mask_params.json      # Mask parameters (for transmission)
+│   ├── output/                      # Output result files
+│   │   ├── *_clean.wav             # Clean speech
+│   │   ├── *_mixed.wav             # Mixed signal (what eavesdroppers hear)
+│   │   ├── *_recovered.wav         # Recovered speech (authorized party)
+│   │   ├── *_mask.wav              # Mask audio (dev mode only)
+│   │   └── *_mask_params.json      # Mask parameters (plain or encrypted)
+│   └── keys/                        # RSA keypairs (if using encryption)
+│       ├── *_private.pem           # Private keys (keep secret!)
+│       └── *_public.pem            # Public keys (share with sender)
 ```
 
 ## Usage Examples
@@ -138,6 +176,12 @@ python audio_privacy_system.py --input dataset/input/file.wav
 
 # Adjust masking intensity
 python audio_privacy_system.py --input dataset/input/file.wav --snr -5.0
+
+# Process with encryption
+python audio_privacy_system.py \
+  --enable-encryption \
+  --public-key dataset/keys/receiver_public.pem \
+  --input dataset/input/file.wav
 ```
 
 ### Batch Processing
