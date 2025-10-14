@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-混合加密模块 - 用于保护掩蔽参数传输
 Hybrid Encryption Module - For protecting mask parameters transmission
 
-使用RSA+AES混合加密方案：
-- 用AES-256-GCM对称加密大数据（mask_params）
-- 用RSA-2048公钥加密对称密钥（session_key）
+Uses RSA+AES hybrid encryption scheme:
+- Use AES-256-GCM symmetric encryption for large data (mask_params)
+- Use RSA-2048 public key to encrypt symmetric key (session_key)
 """
 
 import os
@@ -20,35 +19,35 @@ from cryptography.hazmat.backends import default_backend
 
 
 class HybridEncryption:
-    """混合加密系统类"""
+    """Hybrid encryption system class"""
     
     def __init__(self):
-        """初始化混合加密系统"""
+        """Initialize hybrid encryption system"""
         self.backend = default_backend()
         
-    # ============ RSA密钥对管理 ============
+    # ============ RSA Key Pair Management ============
     
     def generate_rsa_keypair(self, key_size: int = 2048) -> Tuple[bytes, bytes]:
         """
-        生成RSA密钥对
+        Generate RSA key pair
         
         Args:
-            key_size: RSA密钥长度（默认2048位）
+            key_size: RSA key length (default 2048 bits)
             
         Returns:
-            (private_key_pem, public_key_pem): 私钥和公钥的PEM格式
+            (private_key_pem, public_key_pem): Private and public keys in PEM format
         """
-        # 生成RSA私钥
+        # Generate RSA private key
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=key_size,
             backend=self.backend
         )
         
-        # 生成对应的公钥
+        # Generate corresponding public key
         public_key = private_key.public_key()
         
-        # 序列化为PEM格式
+        # Serialize to PEM format
         private_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -65,13 +64,13 @@ class HybridEncryption:
     def save_keypair(self, private_key_pem: bytes, public_key_pem: bytes, 
                      private_path: str, public_path: str):
         """
-        保存密钥对到文件
+        Save key pair to files
         
         Args:
-            private_key_pem: 私钥PEM
-            public_key_pem: 公钥PEM
-            private_path: 私钥保存路径
-            public_path: 公钥保存路径
+            private_key_pem: Private key PEM
+            public_key_pem: Public key PEM
+            private_path: Private key save path
+            public_path: Public key save path
         """
         with open(private_path, 'wb') as f:
             f.write(private_key_pem)
@@ -79,18 +78,18 @@ class HybridEncryption:
         with open(public_path, 'wb') as f:
             f.write(public_key_pem)
         
-        # 设置私钥文件权限为只有所有者可读
+        # Set private key file permissions to owner read-only
         os.chmod(private_path, 0o600)
     
     def load_public_key(self, public_key_path: str):
         """
-        加载公钥
+        Load public key
         
         Args:
-            public_key_path: 公钥文件路径
+            public_key_path: Public key file path
             
         Returns:
-            公钥对象
+            Public key object
         """
         with open(public_key_path, 'rb') as f:
             public_pem = f.read()
@@ -104,13 +103,13 @@ class HybridEncryption:
     
     def load_private_key(self, private_key_path: str):
         """
-        加载私钥
+        Load private key
         
         Args:
-            private_key_path: 私钥文件路径
+            private_key_path: Private key file path
             
         Returns:
-            私钥对象
+            Private key object
         """
         with open(private_key_path, 'rb') as f:
             private_pem = f.read()
@@ -123,35 +122,35 @@ class HybridEncryption:
         
         return private_key
     
-    # ============ AES加密/解密 ============
+    # ============ AES Encryption/Decryption ============
     
     def generate_session_key(self, key_size: int = 32) -> bytes:
         """
-        生成随机对称密钥（session key）
+        Generate random symmetric key (session key)
         
         Args:
-            key_size: 密钥长度（字节），默认32字节=256位
+            key_size: Key length in bytes, default 32 bytes = 256 bits
             
         Returns:
-            随机session key
+            Random session key
         """
         return os.urandom(key_size)
     
     def aes_encrypt(self, plaintext: bytes, session_key: bytes) -> Dict[str, str]:
         """
-        使用AES-256-GCM加密数据
+        Encrypt data using AES-256-GCM
         
         Args:
-            plaintext: 明文数据
-            session_key: 对称密钥（32字节）
+            plaintext: Plaintext data
+            session_key: Symmetric key (32 bytes)
             
         Returns:
-            包含密文、nonce、tag的字典（Base64编码）
+            Dictionary containing ciphertext, nonce, tag (Base64 encoded)
         """
-        # 生成随机nonce（12字节适用于GCM）
+        # Generate random nonce (12 bytes for GCM)
         nonce = os.urandom(12)
         
-        # 创建AES-GCM加密器
+        # Create AES-GCM encryptor
         cipher = Cipher(
             algorithms.AES(session_key),
             modes.GCM(nonce),
@@ -160,13 +159,13 @@ class HybridEncryption:
         
         encryptor = cipher.encryptor()
         
-        # 加密数据
+        # Encrypt data
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         
-        # 获取认证标签
+        # Get authentication tag
         tag = encryptor.tag
         
-        # 返回Base64编码的结果
+        # Return Base64 encoded result
         return {
             'ciphertext': base64.b64encode(ciphertext).decode('utf-8'),
             'nonce': base64.b64encode(nonce).decode('utf-8'),
@@ -175,21 +174,21 @@ class HybridEncryption:
     
     def aes_decrypt(self, encrypted_data: Dict[str, str], session_key: bytes) -> bytes:
         """
-        使用AES-256-GCM解密数据
+        Decrypt data using AES-256-GCM
         
         Args:
-            encrypted_data: 包含密文、nonce、tag的字典（Base64编码）
-            session_key: 对称密钥（32字节）
+            encrypted_data: Dictionary containing ciphertext, nonce, tag (Base64 encoded)
+            session_key: Symmetric key (32 bytes)
             
         Returns:
-            明文数据
+            Plaintext data
         """
-        # 解码Base64
+        # Decode Base64
         ciphertext = base64.b64decode(encrypted_data['ciphertext'])
         nonce = base64.b64decode(encrypted_data['nonce'])
         tag = base64.b64decode(encrypted_data['tag'])
         
-        # 创建AES-GCM解密器
+        # Create AES-GCM decryptor
         cipher = Cipher(
             algorithms.AES(session_key),
             modes.GCM(nonce, tag),
@@ -198,23 +197,23 @@ class HybridEncryption:
         
         decryptor = cipher.decryptor()
         
-        # 解密数据
+        # Decrypt data
         plaintext = decryptor.update(ciphertext) + decryptor.finalize()
         
         return plaintext
     
-    # ============ RSA加密/解密 ============
+    # ============ RSA Encryption/Decryption ============
     
     def rsa_encrypt(self, plaintext: bytes, public_key) -> bytes:
         """
-        使用RSA公钥加密数据
+        Encrypt data using RSA public key
         
         Args:
-            plaintext: 明文数据（小数据，如session key）
-            public_key: RSA公钥对象
+            plaintext: Plaintext data (small data, like session key)
+            public_key: RSA public key object
             
         Returns:
-            密文
+            Ciphertext
         """
         ciphertext = public_key.encrypt(
             plaintext,
@@ -229,14 +228,14 @@ class HybridEncryption:
     
     def rsa_decrypt(self, ciphertext: bytes, private_key) -> bytes:
         """
-        使用RSA私钥解密数据
+        Decrypt data using RSA private key
         
         Args:
-            ciphertext: 密文
-            private_key: RSA私钥对象
+            ciphertext: Ciphertext
+            private_key: RSA private key object
             
         Returns:
-            明文数据
+            Plaintext data
         """
         plaintext = private_key.decrypt(
             ciphertext,
@@ -249,43 +248,43 @@ class HybridEncryption:
         
         return plaintext
     
-    # ============ 混合加密（高层接口）============
+    # ============ Hybrid Encryption (High-level Interface) ============
     
     def hybrid_encrypt(self, mask_params: Dict, public_key_path: str) -> Dict:
         """
-        使用混合加密方案加密mask_params
+        Encrypt mask_params using hybrid encryption scheme
         
-        流程：
-        1. 生成随机session_key（AES密钥）
-        2. 用session_key加密mask_params（AES-256-GCM）
-        3. 用接收方公钥加密session_key（RSA-OAEP）
-        4. 返回加密后的数据包
+        Process:
+        1. Generate random session_key (AES key)
+        2. Encrypt mask_params with session_key (AES-256-GCM)
+        3. Encrypt session_key with receiver public key (RSA-OAEP)
+        4. Return encrypted data package
         
         Args:
-            mask_params: 掩蔽参数字典
-            public_key_path: 接收方公钥文件路径
+            mask_params: Masking parameters dictionary
+            public_key_path: Receiver public key file path
             
         Returns:
-            加密后的数据包
+            Encrypted data package
         """
-        # 1. 生成session key
+        # 1. Generate session key
         session_key = self.generate_session_key(32)  # 256-bit AES key
         
-        # 2. 将mask_params转为JSON字符串
+        # 2. Convert mask_params to JSON string
         params_json = json.dumps(mask_params, ensure_ascii=False)
         params_bytes = params_json.encode('utf-8')
         
-        # 3. 用AES加密mask_params
+        # 3. Encrypt mask_params with AES
         encrypted_params = self.aes_encrypt(params_bytes, session_key)
         
-        # 4. 加载接收方公钥
+        # 4. Load receiver public key
         public_key = self.load_public_key(public_key_path)
         
-        # 5. 用RSA加密session_key
+        # 5. Encrypt session_key with RSA
         encrypted_session_key = self.rsa_encrypt(session_key, public_key)
         encrypted_session_key_b64 = base64.b64encode(encrypted_session_key).decode('utf-8')
         
-        # 6. 构建加密数据包
+        # 6. Build encrypted data package
         encrypted_package = {
             'version': '1.0',
             'encryption_method': 'RSA-2048-OAEP + AES-256-GCM',
@@ -301,59 +300,59 @@ class HybridEncryption:
     
     def hybrid_decrypt(self, encrypted_package: Dict, private_key_path: str) -> Dict:
         """
-        使用混合加密方案解密mask_params
+        Decrypt mask_params using hybrid encryption scheme
         
-        流程：
-        1. 用接收方私钥解密session_key（RSA-OAEP）
-        2. 用session_key解密mask_params（AES-256-GCM）
-        3. 返回原始mask_params
+        Process:
+        1. Decrypt session_key with receiver private key (RSA-OAEP)
+        2. Decrypt mask_params with session_key (AES-256-GCM)
+        3. Return original mask_params
         
         Args:
-            encrypted_package: 加密数据包
-            private_key_path: 接收方私钥文件路径
+            encrypted_package: Encrypted data package
+            private_key_path: Receiver private key file path
             
         Returns:
-            原始mask_params字典
+            Original mask_params dictionary
         """
-        # 1. 加载接收方私钥
+        # 1. Load receiver private key
         private_key = self.load_private_key(private_key_path)
         
-        # 2. 解码并解密session_key
+        # 2. Decode and decrypt session_key
         encrypted_session_key = base64.b64decode(encrypted_package['encrypted_session_key'])
         session_key = self.rsa_decrypt(encrypted_session_key, private_key)
         
-        # 3. 用session_key解密mask_params
+        # 3. Decrypt mask_params with session_key
         encrypted_data = encrypted_package['encrypted_data']
         params_bytes = self.aes_decrypt(encrypted_data, session_key)
         
-        # 4. 解析JSON
+        # 4. Parse JSON
         params_json = params_bytes.decode('utf-8')
         mask_params = json.loads(params_json)
         
         return mask_params
     
-    # ============ 便捷函数 ============
+    # ============ Utility Functions ============
     
     def save_encrypted_params(self, encrypted_package: Dict, output_path: str):
         """
-        保存加密后的参数包到文件
+        Save encrypted parameter package to file
         
         Args:
-            encrypted_package: 加密数据包
-            output_path: 输出文件路径
+            encrypted_package: Encrypted data package
+            output_path: Output file path
         """
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(encrypted_package, f, indent=2, ensure_ascii=False)
     
     def load_encrypted_params(self, encrypted_path: str) -> Dict:
         """
-        从文件加载加密参数包
+        Load encrypted parameter package from file
         
         Args:
-            encrypted_path: 加密文件路径
+            encrypted_path: Encrypted file path
             
         Returns:
-            加密数据包
+            Encrypted data package
         """
         with open(encrypted_path, 'r', encoding='utf-8') as f:
             encrypted_package = json.load(f)
@@ -361,28 +360,175 @@ class HybridEncryption:
         return encrypted_package
 
 
-def demo_usage():
-    """演示混合加密的使用方法"""
-    print("=== 混合加密模块演示 ===\n")
+def batch_encrypt_params():
+    """Batch encrypt all JSON parameter files in params directory"""
+    print("=== Batch Encryption of Parameter Files ===\n")
     
-    # 初始化加密系统
+    # Setup directories
+    import os
+    import glob
+    from pathlib import Path
+    
+    base_output_dir = "dataset/output"
+    encryption_dir = os.path.join(base_output_dir, "encryption")
+    keys_dir = os.path.join(encryption_dir, "keys")
+    params_dir = os.path.join(encryption_dir, "params")
+    
+    os.makedirs(keys_dir, exist_ok=True)
+    os.makedirs(params_dir, exist_ok=True)
+    
+    # Initialize encryption system
     crypto = HybridEncryption()
     
-    # 1. 生成密钥对（接收方）
-    print("1. 生成RSA密钥对...")
+    # Check if keypair exists, if not generate one
+    public_key_files = list(Path(keys_dir).glob("*_public.pem"))
+    private_key_files = list(Path(keys_dir).glob("*_private.pem"))
+    
+    if not public_key_files or not private_key_files:
+        print("1. No existing keypair found. Generating RSA key pair...")
+        private_key_pem, public_key_pem = crypto.generate_rsa_keypair(2048)
+        
+        # Save key pair to dataset/output/encryption/keys directory
+        private_key_path = os.path.join(keys_dir, 'batch_encryption_private.pem')
+        public_key_path = os.path.join(keys_dir, 'batch_encryption_public.pem')
+        
+        crypto.save_keypair(
+            private_key_pem, 
+            public_key_pem,
+            private_key_path,
+            public_key_path
+        )
+        print(f"   ✓ Key pair saved to {private_key_path} and {public_key_path}\n")
+    else:
+        # Use existing keypair
+        public_key_path = str(public_key_files[0])
+        private_key_path = str(private_key_files[0])
+        print(f"1. Using existing keypair:")
+        print(f"   Public key: {public_key_path}")
+        print(f"   Private key: {private_key_path}\n")
+    
+    # 2. Find all JSON parameter files to encrypt
+    print("2. Scanning for parameter files to encrypt...")
+    json_files = list(Path(params_dir).glob("*_mask_params_*.json"))
+    
+    if not json_files:
+        print("   ⚠️  No parameter files found in params directory.")
+        print("   Please run audio_privacy_system.py first to generate parameter files.\n")
+        
+        # Create a demo parameter file for testing
+        print("   Creating demo parameter file for testing...")
+        demo_params = {
+            'seed': 3169164413,
+            'length': 92501,
+            'sample_rate': 16000,
+            'mask_type': 'multi_tone',
+            'scale_factor': 0.47830966114997864,
+            'timestamp': 1760412807,
+            'identifier': 'demo-batch-encryption',
+            'version': '1.0',
+            'target_snr_db': 0.0
+        }
+        demo_file = Path(params_dir) / 'demo_mask_params.json'
+        with open(demo_file, 'w', encoding='utf-8') as f:
+            json.dump(demo_params, f, indent=2, ensure_ascii=False)
+        json_files = [demo_file]
+        print(f"   ✓ Demo file created: {demo_file}")
+    
+    print(f"   Found {len(json_files)} parameter file(s) to encrypt:\n")
+    for i, file_path in enumerate(json_files, 1):
+        print(f"   {i}. {file_path.name}")
+    print()
+    
+    # 3. Batch encrypt all parameter files
+    print("3. Batch encrypting parameter files...")
+    encrypted_files = []
+    failed_files = []
+    
+    for file_path in json_files:
+        try:
+            # Load the parameter file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                mask_params = json.load(f)
+            
+            # Check if already encrypted
+            if 'encryption_method' in mask_params:
+                print(f"   ⚠️  {file_path.name} is already encrypted, skipping...")
+                continue
+            
+            # Encrypt the parameters
+            encrypted_package = crypto.hybrid_encrypt(mask_params, public_key_path)
+            
+            # Save encrypted version (replace original)
+            crypto.save_encrypted_params(encrypted_package, str(file_path))
+            encrypted_files.append(file_path.name)
+            
+            print(f"   ✓ Encrypted: {file_path.name}")
+            
+        except Exception as e:
+            print(f"   ✗ Failed to encrypt {file_path.name}: {e}")
+            failed_files.append(file_path.name)
+    
+    print(f"\n   Encryption Summary:")
+    print(f"   - Successfully encrypted: {len(encrypted_files)} files")
+    print(f"   - Failed: {len(failed_files)} files")
+    if encrypted_files:
+        print(f"   - Encrypted files: {', '.join(encrypted_files)}")
+    if failed_files:
+        print(f"   - Failed files: {', '.join(failed_files)}")
+    
+    # 4. Verification (test decrypt one file if any were encrypted)
+    if encrypted_files:
+        print(f"\n4. Verifying encryption by testing decryption...")
+        try:
+            test_file = json_files[0] if json_files else None
+            if test_file:
+                encrypted_package_loaded = crypto.load_encrypted_params(str(test_file))
+                decrypted_params = crypto.hybrid_decrypt(encrypted_package_loaded, private_key_path)
+                print(f"   ✓ Verification successful! Decryption test passed for {test_file.name}")
+        except Exception as e:
+            print(f"   ✗ Verification failed: {e}")
+    
+    print(f"\n=== Batch Encryption Completed ===")
+    print(f"All parameter files in {params_dir} have been encrypted using:")
+    print(f"- Public key: {public_key_path}")
+    print(f"- Private key: {private_key_path}")
+
+
+def demo_usage():
+    """Demonstrate hybrid encryption usage (original demo)"""
+    print("=== Hybrid Encryption Module Demo ===\n")
+    
+    # Create organized output directories if they don't exist
+    import os
+    base_output_dir = "dataset/output"
+    encryption_dir = os.path.join(base_output_dir, "encryption")
+    keys_dir = os.path.join(encryption_dir, "keys")
+    params_dir = os.path.join(encryption_dir, "params")
+    
+    os.makedirs(keys_dir, exist_ok=True)
+    os.makedirs(params_dir, exist_ok=True)
+    
+    # Initialize encryption system
+    crypto = HybridEncryption()
+    
+    # 1. Generate key pair (receiver)
+    print("1. Generating RSA key pair...")
     private_key_pem, public_key_pem = crypto.generate_rsa_keypair(2048)
     
-    # 保存密钥对
+    # Save key pair to dataset/output/encryption/keys directory
+    private_key_path = os.path.join(keys_dir, 'receiver_private.pem')
+    public_key_path = os.path.join(keys_dir, 'receiver_public.pem')
+    
     crypto.save_keypair(
         private_key_pem, 
         public_key_pem,
-        'receiver_private.pem',
-        'receiver_public.pem'
+        private_key_path,
+        public_key_path
     )
-    print("   ✓ 密钥对已保存到 receiver_private.pem 和 receiver_public.pem\n")
+    print(f"   ✓ Key pair saved to {private_key_path} and {public_key_path}\n")
     
-    # 2. 模拟mask_params
-    print("2. 准备测试数据（mask_params）...")
+    # 2. Simulate mask_params
+    print("2. Preparing test data (mask_params)...")
     mask_params = {
         'seed': 3169164413,
         'length': 92501,
@@ -394,31 +540,39 @@ def demo_usage():
         'version': '1.0',
         'target_snr_db': 0.0
     }
-    print(f"   原始数据大小: {len(json.dumps(mask_params))} 字节\n")
+    print(f"   Original data size: {len(json.dumps(mask_params))} bytes\n")
     
-    # 3. 加密（发送方）
-    print("3. 使用混合加密加密数据...")
-    encrypted_package = crypto.hybrid_encrypt(mask_params, 'receiver_public.pem')
-    crypto.save_encrypted_params(encrypted_package, 'encrypted_params.json')
-    print("   ✓ 加密完成，已保存到 encrypted_params.json")
-    print(f"   加密后数据大小: {len(json.dumps(encrypted_package))} 字节\n")
+    # 3. Encryption (sender)
+    print("3. Encrypting data using hybrid encryption...")
+    encrypted_package = crypto.hybrid_encrypt(mask_params, public_key_path)
+    encrypted_params_path = os.path.join(params_dir, 'encrypted_params.json')
+    crypto.save_encrypted_params(encrypted_package, encrypted_params_path)
+    print(f"   ✓ Encryption completed, saved to {encrypted_params_path}")
+    print(f"   Encrypted data size: {len(json.dumps(encrypted_package))} bytes\n")
     
-    # 4. 解密（接收方）
-    print("4. 使用混合解密恢复数据...")
-    encrypted_package_loaded = crypto.load_encrypted_params('encrypted_params.json')
-    decrypted_params = crypto.hybrid_decrypt(encrypted_package_loaded, 'receiver_private.pem')
-    print("   ✓ 解密完成\n")
+    # 4. Decryption (receiver)
+    print("4. Recovering data using hybrid decryption...")
+    encrypted_package_loaded = crypto.load_encrypted_params(encrypted_params_path)
+    decrypted_params = crypto.hybrid_decrypt(encrypted_package_loaded, private_key_path)
+    print("   ✓ Decryption completed\n")
     
-    # 5. 验证
-    print("5. 验证数据完整性...")
+    # 5. Verification
+    print("5. Verifying data integrity...")
     if mask_params == decrypted_params:
-        print("   ✓ 验证成功！解密后的数据与原始数据完全一致\n")
+        print("   ✓ Verification successful! Decrypted data matches original data perfectly\n")
     else:
-        print("   ✗ 验证失败！数据不一致\n")
+        print("   ✗ Verification failed! Data mismatch\n")
     
-    print("=== 演示完成 ===")
+    print("=== Demo completed ===")
 
 
 if __name__ == "__main__":
-    demo_usage()
+    import sys
+    
+    # Check command line arguments
+    if len(sys.argv) > 1 and sys.argv[1] == "--demo":
+        demo_usage()
+    else:
+        # Default: run batch encryption
+        batch_encrypt_params()
 

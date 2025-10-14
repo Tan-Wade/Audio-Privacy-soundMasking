@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "encryption_method": "RSA-2048-OAEP + AES-256-GCM",
+  "encrypted_session_key": "X2UDtc5ax1VOAWIRXEHvZci7SB9YRe6GdGANWwM81lJSC6rCwCILGs/YS0YAQnD9qsNIc0ejiVB3r4pi0SZr915OFQiNctuogX8PhgkV+9dgGxDAZ669iHU4dnihTJjxtA+VgB/6BWfJHWsJu6ASPV9qUzn5GtJRPDFzsdvpk8O+SKv6c4K9XcfZTwEDXgI0jF3Snt4xrpiNA2Z3fb+qgEFxW7H7ifsZ8YiCq/M6n2iFy2j4nEp/omh+qA+W9T3ATeC1AdcfOja5PwMGXSVCnDb+f84tmY716/mdX6jUnuQsk1TZWpU64Z9lcD4DtsGor4Qqv5iETuVd9zMrKclQxw==",
+  "encrypted_data": {
+    "ciphertext": "Z6uL0IHOuX5JObuILhCVwZ1h/NbRuPpwAqEHGpX474bHddU68IqUimYvk7/9drr4p9L/PJeh2gbmKrHFxOc4iV9Zb0eoyQB72BY0nSZHJalujyrzSwvV3+aFzr1vlmPmDJ+AHuOpxF4uYUaoVPaUeF4ldNw331LZHJLtj8XOKEri+7NSAHk1yVAf4iG/rX8MAl3AfSXYoQ8zH32VOril92KZTDbV31l6M9oC30a/6YcSnBJDVKvKV7WVoijxLs0fqleS959s2SrkG82folT0qszb4quIhyV1SKI0vrsV5qlbsu9n01cq4ZeJqvBuwDaecg==",
+    "nonce": "+oo03tLDqNsGonk5",
+    "tag": "5/2k4Dpu52NIyeSiguyb9w=="
+  },
+  "metadata": {
+    "identifier": "27570d9a-1240-471c-9f7a-7fdd6ade37b8",
+    "timestamp": 1760678029
+  }
+}

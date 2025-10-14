@@ -1,0 +1,11 @@
+{
+  "seed": 414520850,
+  "length": 92501,
+  "sample_rate": 16000,
+  "mask_type": "multi_tone",
+  "scale_factor": 0.5218067687643326,
+  "timestamp": 1760678028,
+  "identifier": "e10583f6-1076-48d4-b69c-c3852b2896cf",
+  "version": "1.0",
+  "target_snr_db": 0.0
+}

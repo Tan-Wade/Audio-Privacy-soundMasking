@@ -1,7 +1,10 @@
+# Core dependencies
 numpy>=1.19.0
 scipy>=1.5.0
+
+# Audio processing
 soundfile>=0.10.0
-pystoi>=0.3.3
-pesq>=0.0.3
+
+# Encryption (optional, required only if using --enable-encryption)
 cryptography>=41.0.0
 

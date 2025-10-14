@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Audio Privacy Protection System using Sound Masking Techniques
-音频隐私保护系统 - 基于声音掩蔽技术的智能手机音频隐私保护
 
 Core Functions:
 1. Apply masking noise to clean speech (similar to "encryption")
@@ -55,13 +54,12 @@ except ImportError:
         HAVE_SF = None
 
 class AudioPrivacySystem:
-    """Audio Privacy Protection System Main Class 音频隐私保护系统主类"""
+    """Audio Privacy Protection System Main Class"""
     
     def __init__(self, sample_rate: int = 16000, target_snr_db: float = 0.0, production_mode: bool = False, 
                  enable_encryption: bool = False):
         """
         Initialize Audio Privacy Protection System
-        初始化音频隐私保护系统
         
         Args:
             sample_rate: Sample rate, default 16kHz (suitable for speech)
@@ -74,45 +72,66 @@ class AudioPrivacySystem:
         self.production_mode = production_mode
         self.enable_encryption = enable_encryption
         
-        # Setup input/output directories 设置输入输出目录
+        # Setup input/output directories
         self.dataset_dir = Path("./dataset")
         self.input_dir = self.dataset_dir / "input"
         self.output_dir = self.dataset_dir / "output"
-        self.keys_dir = self.dataset_dir / "keys"
         
-        # Create directories 创建目录
+        # Create organized output subdirectories
+        self.audio_dir = self.output_dir / "audio"
+        self.clean_audio_dir = self.audio_dir / "clean"
+        self.mixed_audio_dir = self.audio_dir / "mixed"
+        self.recovered_audio_dir = self.audio_dir / "recovered"
+        self.mask_audio_dir = self.audio_dir / "masks"
+        
+        self.encryption_dir = self.output_dir / "encryption"
+        self.keys_dir = self.encryption_dir / "keys"
+        self.params_dir = self.encryption_dir / "params"
+        
+        # Create all directories
         self.dataset_dir.mkdir(exist_ok=True)
         self.input_dir.mkdir(exist_ok=True)
         self.output_dir.mkdir(exist_ok=True)
-        self.keys_dir.mkdir(exist_ok=True)
         
-        # Initialize audio quality evaluator 初始化音频质量评估器
+        # Create audio subdirectories
+        self.audio_dir.mkdir(exist_ok=True)
+        self.clean_audio_dir.mkdir(exist_ok=True)
+        self.mixed_audio_dir.mkdir(exist_ok=True)
+        self.recovered_audio_dir.mkdir(exist_ok=True)
+        self.mask_audio_dir.mkdir(exist_ok=True)
+        
+        # Create encryption subdirectories
+        self.encryption_dir.mkdir(exist_ok=True)
+        self.keys_dir.mkdir(exist_ok=True)
+        self.params_dir.mkdir(exist_ok=True)
+        
+        # Initialize audio quality evaluator
         self.metrics_calc = AudioMetrics(sample_rate) if HAVE_METRICS else None
         
-        # Initialize encryption module 初始化加密模块
+        # Initialize encryption module
         self.crypto = HybridEncryption() if (HAVE_ENCRYPTION and enable_encryption) else None
         
-        # Voice feature parameters 语音特征参数
+        # Voice feature parameters
         self.voice_params = {
-            'speech_band': (200, 4000), # Speech frequency band 语音频带
-            'syllable_rate': (2, 5),    # Syllable rate (Hz) 音节速率
+            'speech_band': (200, 4000), # Speech frequency band
+            'syllable_rate': (2, 5),    # Syllable rate (Hz)
         }
         
     def load_audio(self, file_path: str, force_mono: bool = True) -> Tuple[np.ndarray, int]:
-        """Load audio file 加载音频文件"""
+        """Load audio file"""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Audio file not found: {file_path}")
         
         file_ext = Path(file_path).suffix.lower()
         
-        # Check if soundfile is available 检查soundfile是否可用
+        # Check if soundfile is available
         try:
             import soundfile as sf
             have_soundfile = True
         except ImportError:
             have_soundfile = False
         
-        # For non-WAV formats, must use soundfile 对于非WAV格式，必须使用soundfile
+        # For non-WAV formats, must use soundfile
         if file_ext in ['.m4a', '.mp3', '.flac', '.ogg']:
             if not have_soundfile:
                 raise RuntimeError(f"File format {file_ext} requires soundfile library, install: pip install soundfile")
@@ -121,14 +140,14 @@ class AudioPrivacySystem:
             except Exception as e:
                 raise RuntimeError(f"Cannot read audio file {file_path}: {e}")
         elif have_soundfile:
-            # Try soundfile 尝试soundfile
+            # Try soundfile
             try:
                 data, sr = sf.read(file_path, always_2d=False)
             except Exception:
-                # If soundfile fails, try scipy (WAV only) 如果soundfile失败，尝试scipy（仅WAV格式）
+                # If soundfile fails, try scipy (WAV only)
                 if file_ext == '.wav':
                     sr, data = wavfile.read(file_path)
-                    # Normalize to float32 归一化到float32
+                    # Normalize to float32
                     if data.dtype == np.int16:
                         data = data.astype(np.float32) / 32768.0
                     else:
@@ -136,22 +155,22 @@ class AudioPrivacySystem:
                 else:
                     raise RuntimeError(f"Cannot read audio file {file_path}, ensure soundfile library is installed")
         else:
-            # Only scipy available, WAV format only 只有scipy可用，仅支持WAV格式
+            # Only scipy available, WAV format only
             if file_ext != '.wav':
                 raise RuntimeError(f"File format {file_ext} requires soundfile library, install: pip install soundfile")
             
             sr, data = wavfile.read(file_path)
-            # Normalize to float32 归一化到float32
+            # Normalize to float32
             if data.dtype == np.int16:
                 data = data.astype(np.float32) / 32768.0
             else:
                 data = data.astype(np.float32) / np.max(1e-9 + np.abs(data))
         
-        # Convert to mono 转换为单声道
+        # Convert to mono
         if data.ndim == 2:
             data = np.mean(data, axis=1)
         
-        # Resample if needed 重采样（如果需要）
+        # Resample if needed
         if sr != self.sr:
             data = self._resample(data, sr, self.sr)
             sr = self.sr
@@ -159,24 +178,24 @@ class AudioPrivacySystem:
         return data.astype(np.float32), sr
     
     def save_audio(self, file_path: str, data: np.ndarray, sr: int = None):
-        """Save audio file 保存音频文件"""
+        """Save audio file"""
         if sr is None:
             sr = self.sr
             
         data = np.asarray(data, dtype=np.float32)
         data = np.clip(data, -1.0, 1.0)
         
-        # Try soundfile first 优先尝试soundfile
+        # Try soundfile first
         try:
             import soundfile as sf
             sf.write(file_path, data, sr, subtype="PCM_16")
         except ImportError:
-            # Fallback to scipy 回退到scipy
+            # Fallback to scipy
             from scipy.io.wavfile import write as wav_write
             wav_write(file_path, sr, (data * 32767).astype(np.int16))
     
     def _resample(self, data: np.ndarray, old_sr: int, new_sr: int) -> np.ndarray:
-        """Simple resampling (linear interpolation) 简单重采样（线性插值）"""
+        """Simple resampling (linear interpolation)"""
         if old_sr == new_sr:
             return data
             
@@ -189,7 +208,6 @@ class AudioPrivacySystem:
     def generate_voice_like_mask(self, length: int, sr: int = None, mask_type: str = "multi_tone", seed: int = None) -> np.ndarray:
         """
         Generate masking noise
-        生成掩蔽噪声
         
         Args:
             length: Signal length
@@ -212,66 +230,66 @@ class AudioPrivacySystem:
             return self._generate_multi_tone_mask(length, sr)
     
     def _generate_voice_like_noise(self, length: int, sr: int) -> np.ndarray:
-        """Original voice-like masking noise 原始的类语音掩蔽噪声"""
-        # 1. Generate white noise 生成白噪声
+        """Original voice-like masking noise"""
+        # 1. Generate white noise
         white_noise = np.random.randn(length).astype(np.float32)
         
-        # 2. Bandpass filter to speech frequency band 带通滤波到语音频带
+        # 2. Bandpass filter to speech frequency band
         filtered_noise = self._bandpass_filter(white_noise, sr)
         
-        # 3. Add syllable modulation (simulate speech energy changes) 添加音节式调制
+        # 3. Add syllable modulation (simulate speech energy changes)
         syllable_modulation = self._generate_syllable_modulation(length, sr)
         
-        # 4. Combine to generate voice-like noise 组合生成类语音噪声
+        # 4. Combine to generate voice-like noise
         voice_like = filtered_noise * syllable_modulation
         
-        # 5. Normalize and boost volume 归一化并大幅提升音量
+        # 5. Normalize and boost volume
         voice_like = voice_like / (np.max(np.abs(voice_like)) + 1e-9)
-        voice_like *= 2.0  # STRONG boost volume for aggressive masking effect 大幅提升音量以获得激进掩蔽效果
+        voice_like *= 2.0  # STRONG boost volume for aggressive masking effect
         
         return voice_like.astype(np.float32)
     
     
     def _generate_multi_tone_mask(self, length: int, sr: int) -> np.ndarray:
-        """Multi-tone masking with speech-like characteristics 多音调掩蔽"""
+        """Multi-tone masking with speech-like characteristics"""
         t = np.linspace(0, length / sr, length, endpoint=False)
         mask = np.zeros(length, dtype=np.float32)
         
-        # Generate multiple tones in speech frequency range 在语音频段生成多个音调
+        # Generate multiple tones in speech frequency range
         speech_tones = [300, 500, 800, 1200, 1800, 2500, 3200]  # Common speech frequencies
         
         for i, freq in enumerate(speech_tones):
-            # Add slight frequency modulation 添加轻微频率调制
+            # Add slight frequency modulation
             fm_freq = 0.5 + i * 0.2
             freq_mod = freq * (1 + 0.1 * np.sin(2 * np.pi * fm_freq * t))
             
-            # Generate tone with amplitude modulation 生成带幅度调制的音调
+            # Generate tone with amplitude modulation
             amplitude = 0.8 + 0.4 * np.sin(2 * np.pi * (0.3 + i * 0.1) * t)
             phase = 2 * np.pi * freq_mod * t + np.random.uniform(0, 2*np.pi)
             
             tone = amplitude * np.sin(phase)
             mask += tone * 0.15
         
-        # Add some filtered noise for texture 添加一些滤波噪声增加纹理
+        # Add some filtered noise for texture
         noise = np.random.randn(length).astype(np.float32)
         filtered_noise = self._bandpass_filter(noise, sr)
         mask += filtered_noise * 0.3
         
-        # Normalize and boost volume 归一化并大幅提升音量
+        # Normalize and boost volume
         mask = mask / (np.max(np.abs(mask)) + 1e-9)
-        mask *= 2.0  # STRONG boost volume for aggressive masking effect 大幅提升音量以获得激进掩蔽效果
+        mask *= 2.0  # STRONG boost volume for aggressive masking effect
         
         return mask.astype(np.float32)
     
     
     def _bandpass_filter_custom(self, signal: np.ndarray, sr: int, low_freq: float, high_freq: float) -> np.ndarray:
-        """Custom bandpass filter with specific frequency range 自定义带通滤波器"""
+        """Custom bandpass filter with specific frequency range"""
         numtaps = 257
         nyq = sr / 2.0
         f1 = low_freq / nyq
         f2 = high_freq / nyq
         
-        # Windowed sinc bandpass filter 窗口化sinc带通滤波器
+        # Windowed sinc bandpass filter
         n = np.arange(numtaps) - (numtaps - 1) / 2.0
         
         def sinc(x):
@@ -279,28 +297,28 @@ class AudioPrivacySystem:
             
         h = (2 * f2 * sinc(2 * np.pi * f2 * n) - 2 * f1 * sinc(2 * np.pi * f1 * n))
         
-        # Hann window Hann窗
+        # Hann window
         window = 0.5 * (1 - np.cos(2 * np.pi * np.arange(numtaps) / (numtaps - 1)))
         h = h * window
         
-        # Normalize 归一化
+        # Normalize
         h = h / np.sum(h)
         
-        # Apply filter 应用滤波器
+        # Apply filter
         filtered = np.convolve(signal, h, mode='same')
         return filtered.astype(np.float32)
     
     def _bandpass_filter(self, signal: np.ndarray, sr: int) -> np.ndarray:
-        """Simple bandpass filter (windowed sinc) 简单的带通滤波器（窗口化sinc）"""
+        """Simple bandpass filter (windowed sinc)"""
         low_freq, high_freq = self.voice_params['speech_band']
         
-        # Design FIR filter 设计FIR滤波器
+        # Design FIR filter
         numtaps = 513
         nyq = sr / 2.0
         f1 = low_freq / nyq
         f2 = high_freq / nyq
         
-        # Windowed sinc bandpass filter 窗口化sinc带通滤波器
+        # Windowed sinc bandpass filter
         n = np.arange(numtaps) - (numtaps - 1) / 2.0
         
         def sinc(x):
@@ -308,36 +326,36 @@ class AudioPrivacySystem:
             
         h = (2 * f2 * sinc(2 * np.pi * f2 * n) - 2 * f1 * sinc(2 * np.pi * f1 * n))
         
-        # Hann window Hann窗
+        # Hann window
         window = 0.5 * (1 - np.cos(2 * np.pi * np.arange(numtaps) / (numtaps - 1)))
         h = h * window
         
-        # Normalize 归一化
+        # Normalize
         h = h / np.sum(h)
         
-        # Apply filter 应用滤波器
+        # Apply filter
         filtered = np.convolve(signal, h, mode='same')
         return filtered.astype(np.float32)
     
     def _generate_syllable_modulation(self, length: int, sr: int) -> np.ndarray:
-        """Generate syllable modulation signal 生成音节式调制信号"""
-        # Random syllable rate 随机音节速率
+        """Generate syllable modulation signal"""
+        # Random syllable rate
         syllable_rate = np.random.uniform(*self.voice_params['syllable_rate'])
         
-        # Generate random envelope 生成随机包络
-        env_length = max(1, length // 400)  # Coarse envelope 粗粒度包络
+        # Generate random envelope
+        env_length = max(1, length // 400)  # Coarse envelope
         envelope = np.abs(np.random.randn(env_length)).astype(np.float32)
         
-        # Upsample to signal length 上采样到信号长度
+        # Upsample to signal length
         t_env = np.linspace(0, env_length - 1, num=length)
         envelope_up = np.interp(t_env, np.arange(env_length), envelope)
         
-        # Smooth envelope (simulate syllable boundaries) 平滑包络（模拟音节边界）
+        # Smooth envelope (simulate syllable boundaries)
         smooth_kernel = np.ones(51, dtype=np.float32) / 51.0
         envelope_smooth = np.convolve(envelope_up, smooth_kernel, mode='same')
         envelope_smooth = envelope_smooth / (np.max(np.abs(envelope_smooth)) + 1e-9)
         
-        # Add syllable modulation 添加音节式调制
+        # Add syllable modulation
         t = np.linspace(0, length / sr, length, endpoint=False)
         syllable_mod = 0.3 + 0.7 * (0.5 + 0.5 * np.sin(2 * np.pi * syllable_rate * t))
         
@@ -346,7 +364,6 @@ class AudioPrivacySystem:
     def mix_signals(self, clean: np.ndarray, mask: np.ndarray, target_snr_db: float = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Mix clean signal and masking signal at specified SNR
-        将干净信号和掩蔽信号按指定信噪比混合
         
         Args:
             clean: Clean speech signal
@@ -360,23 +377,23 @@ class AudioPrivacySystem:
         if target_snr_db is None:
             target_snr_db = self.target_snr_db
             
-        # Calculate RMS 计算RMS
+        # Calculate RMS
         clean_rms = np.sqrt(np.mean(clean ** 2) + 1e-12)
         mask_rms = np.sqrt(np.mean(mask ** 2) + 1e-12)
         
         if mask_rms < 1e-12:
             return clean.copy(), mask.copy()
         
-        # Calculate required masking signal amplitude 计算所需的掩蔽信号幅度
-        # Apply VERY strong masking by reducing effective SNR significantly 通过大幅降低有效SNR应用极强掩蔽
+        # Calculate required masking signal amplitude
+        # Apply VERY strong masking by reducing effective SNR significantly
         effective_snr = target_snr_db - 8.0  # Reduce SNR by 8dB for VERY strong masking
         desired_mask_rms = clean_rms / (10.0 ** (effective_snr / 20.0))
         scale_factor = desired_mask_rms / mask_rms
         
-        # Scale masking signal 缩放掩蔽信号
+        # Scale masking signal
         scaled_mask = mask * scale_factor
         
-        # Mix signals 混合信号
+        # Mix signals
         mixed = clean + scaled_mask
         
         return mixed, scaled_mask
@@ -385,7 +402,6 @@ class AudioPrivacySystem:
                      mu: float = 0.01, filter_order: int = 128) -> Tuple[np.ndarray, np.ndarray]:
         """
         LMS adaptive filter for authorized recovery
-        LMS自适应滤波器进行授权恢复
         
         Args:
             mixed: Observed signal (clean + mask)
@@ -403,33 +419,33 @@ class AudioPrivacySystem:
         recovered = np.zeros(n, dtype=np.float32)
         
         for i in range(n):
-            # Update input buffer 更新输入缓冲区
+            # Update input buffer
             x_buffer[1:] = x_buffer[:-1]
             x_buffer[0] = mask_ref[i] if i < len(mask_ref) else 0.0
             
-            # Calculate filter output 计算滤波器输出
+            # Calculate filter output
             y = np.dot(w, x_buffer)
             
-            # Calculate error signal (should be clean speech estimate) 计算误差信号
+            # Calculate error signal (should be clean speech estimate)
             error = mixed[i] - y
             recovered[i] = error
             
-            # LMS update LMS更新
+            # LMS update
             w += 2 * mu * error * x_buffer
         
         return recovered, w
     
     def calculate_snr(self, signal: np.ndarray, noise: np.ndarray) -> float:
-        """Calculate Signal-to-Noise Ratio (dB) 计算信噪比（dB）"""
+        """Calculate Signal-to-Noise Ratio (dB)"""
         signal_power = np.mean(signal ** 2) + 1e-12
         noise_power = np.mean(noise ** 2) + 1e-12
         
         if noise_power < 1e-12:
-            return float('inf')  # No noise case 无噪声情况
+            return float('inf')  # No noise case
         
         snr = 10.0 * np.log10(signal_power / noise_power)
         
-        # Handle NaN and infinity 处理NaN和无穷大值
+        # Handle NaN and infinity
         if np.isnan(snr) or np.isinf(snr):
             return 0.0
             
@@ -439,7 +455,6 @@ class AudioPrivacySystem:
                             identifier: str = None) -> Dict:
         """
         Generate masking parameters for transmission to authorized party
-        生成掩蔽参数以传输给授权方
         
         Args:
             length: Audio length (number of samples)
@@ -482,7 +497,6 @@ class AudioPrivacySystem:
     def regenerate_mask_from_params(self, mask_params: Dict) -> np.ndarray:
         """
         Regenerate masking noise from parameters (used by authorized party)
-        根据参数重新生成掩蔽噪声（授权方使用）
         
         Args:
             mask_params: Dictionary containing mask generation parameters
@@ -508,29 +522,35 @@ class AudioPrivacySystem:
     def save_mask_params(self, mask_params: Dict, output_path: str, receiver_public_key: str = None):
         """
         Save masking parameters to JSON file (with optional encryption)
-        保存掩蔽参数到JSON文件（可选加密）
         
         Args:
             mask_params: Masking parameters dictionary
             output_path: Output file path
             receiver_public_key: Receiver's public key path (for encryption)
         """
-        # If encryption is enabled and public key is provided
+        # Convert Path to string if needed
+        output_path_str = str(output_path)
+        
+        # Always save plain JSON first
+        with open(output_path_str, 'w', encoding='utf-8') as f:
+            json.dump(mask_params, f, indent=2, ensure_ascii=False)
+        
+        # If encryption is enabled and public key is provided, also save encrypted version
         if self.enable_encryption and self.crypto and receiver_public_key:
-            # Use hybrid encryption
+            # Create encrypted version with different filename
+            encrypted_path = output_path_str.replace('.json', '_encrypted.json')
             encrypted_package = self.crypto.hybrid_encrypt(mask_params, receiver_public_key)
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(encrypted_path, 'w', encoding='utf-8') as f:
                 json.dump(encrypted_package, f, indent=2, ensure_ascii=False)
-            print(f"🔒 参数已加密保存（混合加密：RSA+AES）")
+            print(f"🔒 Parameters encrypted and saved (Hybrid encryption: RSA+AES)")
+            print(f"   Plain version: {output_path_str}")
+            print(f"   Encrypted version: {encrypted_path}")
         else:
-            # Save as plain JSON
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mask_params, f, indent=2, ensure_ascii=False)
+            print(f"📄 Parameters saved (plain JSON)")
     
     def load_mask_params(self, params_path: str, receiver_private_key: str = None) -> Dict:
         """
         Load masking parameters from JSON file (with optional decryption)
-        从JSON文件加载掩蔽参数（可选解密）
         
         Args:
             params_path: Parameters file path
@@ -546,13 +566,13 @@ class AudioPrivacySystem:
         if 'encryption_method' in data and 'encrypted_session_key' in data:
             # Data is encrypted, need to decrypt
             if not self.crypto:
-                raise RuntimeError("加密模块未加载，无法解密。请安装：pip install cryptography")
+                raise RuntimeError("Encryption module not loaded, cannot decrypt. Please install: pip install cryptography")
             if not receiver_private_key:
-                raise ValueError("数据已加密，需要提供接收方私钥路径进行解密")
+                raise ValueError("Data is encrypted, need to provide receiver private key path for decryption")
             
-            print("🔓 检测到加密数据，正在解密...")
+            print("🔓 Detected encrypted data, decrypting...")
             mask_params = self.crypto.hybrid_decrypt(data, receiver_private_key)
-            print("✓ 解密成功")
+            print("✓ Decryption successful")
             return mask_params
         else:
             # Data is plain JSON
@@ -562,7 +582,6 @@ class AudioPrivacySystem:
                            receiver_public_key: str = None) -> dict:
         """
         Process audio pair: clean speech -> masking -> mixing -> recovery
-        处理音频对：干净语音 -> 掩蔽 -> 混合 -> 恢复
         
         Args:
             clean_path: Clean speech file path
@@ -571,18 +590,18 @@ class AudioPrivacySystem:
         Returns:
             Processing results dictionary
         """
-        # 1. Load clean speech 加载干净语音
+        # 1. Load clean speech
         clean, _ = self.load_audio(clean_path)
         print(f"Loading clean speech: {clean_path}, length: {len(clean)/self.sr:.2f}s")
         
         # 2. Generate random seed for this session
         seed = secrets.randbits(32)
         
-        # 3. Generate masking noise with seed 生成掩蔽噪声
+        # 3. Generate masking noise with seed
         mask = self.generate_voice_like_mask(len(clean), mask_type=mask_type, seed=seed)
         print(f"Generating {mask_type} masking noise (seed: {seed})")
         
-        # 4. Mix signals 混合信号
+        # 4. Mix signals
         mixed, scaled_mask = self.mix_signals(clean, mask)
         print(f"Mixing signals, target SNR: {self.target_snr_db:.1f}dB")
         
@@ -599,11 +618,11 @@ class AudioPrivacySystem:
         )
         print(f"Generated mask parameters (identifier: {mask_params['identifier']})")
         
-        # 7. Authorized recovery 授权恢复
+        # 7. Authorized recovery
         recovered, filter_taps = self.lms_recovery(mixed, scaled_mask)
         print("Executing LMS authorized recovery")
         
-        # 8. Calculate performance metrics 计算性能指标
+        # 8. Calculate performance metrics
         snr_input = self.calculate_snr(clean, scaled_mask)
         snr_after = self.calculate_snr(clean, recovered - clean)
         improvement = snr_after - snr_input
@@ -612,7 +631,7 @@ class AudioPrivacySystem:
         print(f"Recovery SNR: {snr_after:.2f}dB")
         print(f"SNR improvement: {improvement:.2f}dB")
         
-        # 9. Detailed quality assessment (if available) 详细质量评估
+        # 9. Detailed quality assessment (if available)
         if self.metrics_calc:
             print("\n📊 Detailed Quality Assessment:")
             mixed_metrics = self.metrics_calc.calculate_all_metrics(clean, mixed)
@@ -621,22 +640,26 @@ class AudioPrivacySystem:
             print(f"Mixed signal quality:")
             print(f"  - SNR: {mixed_metrics['snr_db']:.2f} dB")
             print(f"  - STOI: {mixed_metrics['stoi']:.3f}")
+            print(f"  - Cosine similarity: {mixed_metrics['cosine_similarity']:.3f}")
+            print(f"  - SI-SNR: {mixed_metrics['si_snr_db']:.2f} dB")
             
             print(f"Recovery signal quality:")
             print(f"  - SNR: {recovery_metrics['snr_db']:.2f} dB")
             print(f"  - STOI: {recovery_metrics['stoi']:.3f}")
             print(f"  - Signal preservation: {recovery_metrics['signal_preservation']:.3f}")
+            print(f"  - Cosine similarity: {recovery_metrics['cosine_similarity']:.3f}")
+            print(f"  - SI-SNR: {recovery_metrics['si_snr_db']:.2f} dB")
         
-        # 10. Save files 保存文件
+        # 10. Save files
         if not output_prefix:
             output_prefix = Path(clean_path).stem
             
-        # Save to new output directory 保存到新的输出目录
-        clean_out = self.output_dir / f"{output_prefix}_clean.wav"
-        mask_out = self.output_dir / f"{output_prefix}_mask_{mask_type}.wav"
-        mixed_out = self.output_dir / f"{output_prefix}_mixed_{mask_type}.wav"
-        recovered_out = self.output_dir / f"{output_prefix}_recovered_{mask_type}.wav"
-        params_out = self.output_dir / f"{output_prefix}_mask_params_{mask_type}.json"
+        # Save to organized output subdirectories
+        clean_out = self.clean_audio_dir / f"{output_prefix}_clean.wav"
+        mask_out = self.mask_audio_dir / f"{output_prefix}_mask_{mask_type}.wav"
+        mixed_out = self.mixed_audio_dir / f"{output_prefix}_mixed_{mask_type}.wav"
+        recovered_out = self.recovered_audio_dir / f"{output_prefix}_recovered_{mask_type}.wav"
+        params_out = self.params_dir / f"{output_prefix}_mask_params_{mask_type}.json"
         
         self.save_audio(clean_out, clean)
         self.save_audio(mixed_out, mixed)
@@ -645,15 +668,15 @@ class AudioPrivacySystem:
         # Save mask audio only in non-production mode (for demo/debugging)
         if not self.production_mode:
             self.save_audio(mask_out, scaled_mask)
-            print(f"Saved mask audio (demo mode): {mask_out.name}")
+            print(f"Saved mask audio (demo mode): {mask_out}")
         else:
             print("Production mode: mask audio not saved (use mask_params instead)")
         
         # Always save mask parameters (for transmission to authorized party)
         self.save_mask_params(mask_params, params_out, receiver_public_key)
-        print(f"Saved mask parameters: {params_out.name}")
+        print(f"Saved mask parameters: {params_out}")
         
-        # 11. Return results 返回结果
+        # 11. Return results
         output_files = {
             'clean': str(clean_out),
             'mixed': str(mixed_out),
@@ -687,7 +710,7 @@ class AudioPrivacySystem:
         return results
     
     def batch_process(self, clean_files: List[str], output_prefixes: List[str] = None) -> List[dict]:
-        """Batch process multiple audio files 批量处理多个音频文件"""
+        """Batch process multiple audio files"""
         if output_prefixes is None:
             output_prefixes = [Path(f).stem for f in clean_files]
             
@@ -707,7 +730,6 @@ class AudioPrivacySystem:
                            receiver_private_key: str = None) -> dict:
         """
         Authorized party recovery: Use mask parameters to recover clean audio from mixed audio
-        授权方恢复：使用掩蔽参数从混合音频中恢复干净音频
         
         Args:
             mixed_audio_path: Mixed audio file path
@@ -718,31 +740,37 @@ class AudioPrivacySystem:
         Returns:
             Recovery results dictionary
         """
-        print("=== 授权方恢复流程 ===")
+        print("=== Authorized Recovery Process ===")
         
-        # 1. Load mixed audio 加载混合音频
-        print(f"1. 加载混合音频: {mixed_audio_path}")
+        # 1. Load mixed audio
+        print(f"1. Loading mixed audio: {mixed_audio_path}")
         mixed, _ = self.load_audio(mixed_audio_path)
         
-        # 2. Load and decrypt (if needed) mask parameters 加载并解密（如需要）掩蔽参数
-        print(f"2. 加载掩蔽参数: {params_path}")
+        # 2. Load and decrypt (if needed) mask parameters
+        print(f"2. Loading mask parameters: {params_path}")
         mask_params = self.load_mask_params(params_path, receiver_private_key)
         
-        # 3. Regenerate mask from parameters 根据参数重新生成掩蔽信号
-        print("3. 根据参数重新生成掩蔽信号...")
+        # 3. Regenerate mask from parameters
+        print("3. Regenerating mask from parameters...")
         scaled_mask = self.regenerate_mask_from_params(mask_params)
         
-        # 4. LMS recovery LMS恢复
-        print("4. 执行LMS自适应恢复...")
+        # 4. LMS recovery
+        print("4. Executing LMS adaptive recovery...")
         recovered, filter_taps = self.lms_recovery(mixed, scaled_mask)
         
-        # 5. Save recovered audio 保存恢复的音频
-        print(f"5. 保存恢复的音频: {output_path}")
+        # 5. Save recovered audio to organized directory
+        output_path_obj = Path(output_path)
+        if not output_path_obj.is_absolute():
+            # If relative path, save to recovered audio directory
+            filename = output_path_obj.name
+            output_path = self.recovered_audio_dir / filename
+        
+        print(f"5. Saving recovered audio: {output_path}")
         self.save_audio(output_path, recovered)
         
-        print("✓ 授权恢复完成！")
+        print("✓ Authorized recovery completed!")
         
-        # 6. Return results 返回结果
+        # 6. Return results
         results = {
             'mixed_audio': mixed_audio_path,
             'params_file': params_path,
@@ -756,7 +784,6 @@ class AudioPrivacySystem:
     def generate_keypair_for_receiver(self, receiver_name: str = "receiver") -> dict:
         """
         Generate RSA keypair for receiver
-        为接收方生成RSA密钥对
         
         Args:
             receiver_name: Receiver identifier name
@@ -765,9 +792,9 @@ class AudioPrivacySystem:
             Keypair information dictionary
         """
         if not self.crypto:
-            raise RuntimeError("加密模块未加载。请安装：pip install cryptography")
+            raise RuntimeError("Encryption module not loaded. Please install: pip install cryptography")
         
-        print(f"=== 生成接收方密钥对: {receiver_name} ===")
+        print(f"=== Generating Receiver Keypair: {receiver_name} ===")
         
         # Generate keypair
         private_pem, public_pem = self.crypto.generate_rsa_keypair(2048)
@@ -778,9 +805,9 @@ class AudioPrivacySystem:
         
         self.crypto.save_keypair(private_pem, public_pem, str(private_path), str(public_path))
         
-        print(f"✓ 私钥已保存: {private_path}")
-        print(f"✓ 公钥已保存: {public_path}")
-        print(f"⚠️  警告: 请妥善保管私钥文件！")
+        print(f"✓ Private key saved: {private_path}")
+        print(f"✓ Public key saved: {public_path}")
+        print(f"⚠️  Warning: Please keep private key file secure!")
         
         return {
             'private_key': str(private_path),
@@ -791,15 +818,14 @@ class AudioPrivacySystem:
 
 
 def main():
-    """Main function - Audio Privacy Protection System 主函数 - 音频隐私保护系统"""
+    """Main function - Audio Privacy Protection System"""
     
-    # ========== ENVIRONMENT CONFIGURATION 环境配置 ==========
+    # ========== ENVIRONMENT CONFIGURATION ==========
     # You can manually change this value: "dev" or "prod"
-    # 您可以手动修改此值："dev" 或 "prod"
     ENVIRONMENT = "dev"  # Options: "dev" or "prod"
     # ========================================================
     
-    # Validate environment 验证环境变量
+    # Validate environment
     if ENVIRONMENT not in ["dev", "prod"]:
         raise ValueError(f"Invalid ENVIRONMENT value: {ENVIRONMENT}. Must be 'dev' or 'prod'.")
     
@@ -815,7 +841,7 @@ def main():
                        choices=['voice_like', 'multi_tone'],
                        help='Type of masking noise')
     
-    # Encryption related arguments 加密相关参数
+    # Encryption related arguments
     parser.add_argument('--enable-encryption', action='store_true', 
                        help='Enable hybrid encryption for mask parameters')
     parser.add_argument('--generate-keypair', type=str, 
@@ -825,7 +851,7 @@ def main():
     parser.add_argument('--private-key', type=str, 
                        help='Receiver private key path (for decryption)')
     
-    # Recovery mode arguments 恢复模式参数
+    # Recovery mode arguments
     parser.add_argument('--recover', action='store_true',
                        help='Recovery mode: recover clean audio from mixed audio')
     parser.add_argument('--mixed-audio', type=str,
@@ -848,22 +874,30 @@ def main():
         print("🔐 Encryption: Enabled (Hybrid RSA+AES)")
     print()
     
-    # Initialize system 初始化系统
+    # Initialize system
     system = AudioPrivacySystem(sample_rate=args.sample_rate, target_snr_db=args.snr, 
                                production_mode=production_mode, enable_encryption=args.enable_encryption)
     
-    # Handle keypair generation 处理密钥对生成
+    # Handle keypair generation
     if args.generate_keypair:
         keypair_info = system.generate_keypair_for_receiver(args.generate_keypair)
-        print("\n提示：")
-        print("- 发送方使用公钥加密参数")
-        print("- 接收方使用私钥解密参数")
+        print("\nInstructions:")
+        print("- Sender uses public key to encrypt parameters")
+        print("- Receiver uses private key to decrypt parameters")
         return
     
-    # Handle recovery mode 处理恢复模式
+    # Auto-generate keypair if encryption is enabled but no keypair exists
+    if args.enable_encryption and not list(system.keys_dir.glob("*_public.pem")):
+        print("🔑 No existing keypair found. Generating default keypair...")
+        keypair_info = system.generate_keypair_for_receiver("default_receiver")
+        print("✓ Default keypair generated for encryption")
+        # Use the generated keypair for subsequent operations
+        args.public_key = keypair_info['public_key']
+    
+    # Handle recovery mode
     if args.recover:
         if not args.mixed_audio or not args.params_file or not args.output:
-            print("错误：恢复模式需要指定 --mixed-audio, --params-file 和 --output")
+            print("Error: Recovery mode requires --mixed-audio, --params-file and --output")
             return
         
         result = system.authorized_recovery(
@@ -873,18 +907,26 @@ def main():
             args.private_key
         )
         
-        print("\n恢复结果:")
-        print(f"- 混合音频: {result['mixed_audio']}")
-        print(f"- 参数文件: {result['params_file']}")
-        print(f"- 恢复音频: {result['recovered_audio']}")
-        print(f"- 是否加密: {'是' if result['encrypted'] else '否'}")
+        print("\nRecovery Results:")
+        print(f"- Mixed audio: {result['mixed_audio']}")
+        print(f"- Parameters file: {result['params_file']}")
+        print(f"- Recovered audio: {result['recovered_audio']}")
+        print(f"- Encrypted: {'Yes' if result['encrypted'] else 'No'}")
         return
     
     if args.input:
-        # Process single file 处理单个文件
+        # Process single file
         print(f"Processing single file: {args.input}")
+        # Auto-find public key if encryption is enabled but no key specified
+        public_key_to_use = args.public_key
+        if args.enable_encryption and not public_key_to_use:
+            public_key_files = list(system.keys_dir.glob("*_public.pem"))
+            if public_key_files:
+                public_key_to_use = str(public_key_files[0])
+                print(f"🔑 Using existing public key: {public_key_to_use}")
+        
         result = system.process_audio_pair(args.input, mask_type=args.mask_type, 
-                                          receiver_public_key=args.public_key)
+                                          receiver_public_key=public_key_to_use)
         print(f"\nProcessing results:")
         print(f"- Input SNR: {result['metrics']['input_snr_db']:.2f}dB")
         print(f"- Recovery SNR: {result['metrics']['output_snr_db']:.2f}dB")
@@ -892,7 +934,7 @@ def main():
         print(f"\nOutput files saved to: {system.output_dir}")
         
     elif args.batch:
-        # Batch processing 批量处理
+        # Batch processing
         batch_dir = Path(args.batch)
         if not batch_dir.exists():
             print(f"Error: Directory does not exist: {batch_dir}")
@@ -917,7 +959,7 @@ def main():
             print(f"- Average SNR improvement: {avg_improvement:.2f}dB")
         
     else:
-        # Default: Process all files in dataset/input 默认：处理dataset/input中的所有文件
+        # Default: Process all files in dataset/input
         input_files = []
         for ext in ['*.wav', '*.m4a', '*.mp3', '*.flac']:
             input_files.extend(system.input_dir.glob(ext))
@@ -930,14 +972,15 @@ def main():
             for i, input_file in enumerate(input_files, 1):
                 print(f"\n[{i}/{len(input_files)}] Processing: {input_file.name}")
                 try:
-                    result = system.process_audio_pair(str(input_file), mask_type=args.mask_type)
+                    result = system.process_audio_pair(str(input_file), mask_type=args.mask_type, 
+                                                    receiver_public_key=args.public_key)
                     results.append((input_file.name, result))
                     print(f"✓ Completed: SNR improvement = {result['metrics']['improvement_db']:.2f}dB")
                 except Exception as e:
                     print(f"✗ Failed: {e}")
                     results.append((input_file.name, None))
             
-            # Summary 总结
+            # Summary
             successful = [r for r in results if r[1] is not None]
             if successful:
                 avg_improvement = np.mean([r[1]['metrics']['improvement_db'] for r in successful])

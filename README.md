@@ -1,17 +1,42 @@
 # Audio Privacy Protection System
 
-An implementation of sound masking for smartphone audio privacy based on the paper "Exploiting Sound Masking for Audio Privacy in Smartphones".
+This is for the CSEC5614 assignment 2 (Activity Code 06_Group 4).
 
-## Quick Start
+This is an implementation of sound masking for smartphone audio privacy.
 
-Process all input files:
+## 🚀 Quick Start
+
+Here are the two main ways to run the audio privacy protection system:
+
+### Method 1: One-step Completion (Recommended)
+This method runs the main system and automatically handles key generation (if no keys exist) and encryption of all generated parameters.
+
 ```bash
-python audio_privacy_system.py
+# Run the main system and automatically encrypt all parameters
+python audio_privacy_system.py --enable-encryption
 ```
+
+### Method 2: Step-by-step Execution
+This method allows you to first process audio and generate unencrypted parameters, then batch encrypt them separately.
+
+```bash
+# 1. Pre-process audio (generate unencrypted parameters)
+python audio_privacy_system.py
+
+# 2. Batch encrypt all parameter files
+python encryption_module.py
+```
+
+### Additional Options
 
 Process specific file:
 ```bash
 python audio_privacy_system.py --input dataset/input/your_file.wav
+```
+
+Process with encryption:
+```bash
+python audio_privacy_system.py --enable-encryption --input dataset/input/your_file.wav
 ```
 
 **Environment Configuration:**
@@ -122,26 +147,47 @@ For detailed documentation, see [PARAMETER_BASED_MASKING.md](PARAMETER_BASED_MAS
 Protect mask parameters with RSA-2048 + AES-256-GCM encryption:
 
 ```bash
+# Method 1: One-step encryption (recommended)
+python audio_privacy_system.py --enable-encryption
+
+# Method 2: Manual key generation and encryption
 # 1. Generate receiver's keypair
 python audio_privacy_system.py --enable-encryption --generate-keypair alice
 
-# 2. Sender: Encrypt parameters with receiver's public key
-python audio_privacy_system.py --enable-encryption \
-  --public-key dataset/keys/alice_public.pem \
-  --input dataset/input/voice.wav
+# 2. Process audio with encryption (auto-generates keys if none exist)
+python audio_privacy_system.py --enable-encryption --input dataset/input/voice.wav
 
-# 3. Receiver: Decrypt and recover
+# 3. Batch encrypt existing parameter files
+python encryption_module.py
+
+# 4. Receiver: Decrypt and recover
 python audio_privacy_system.py --enable-encryption --recover \
-  --mixed-audio dataset/output/*_mixed.wav \
-  --params-file dataset/output/*_mask_params.json \
-  --private-key dataset/keys/alice_private.pem \
+  --mixed-audio dataset/output/audio/mixed/*_mixed.wav \
+  --params-file dataset/output/encryption/params/*_mask_params_encrypted.json \
+  --private-key dataset/output/encryption/keys/*_private.pem \
   --output recovered.wav
-
-# Or run the demo
-python demo_encryption.py
 ```
 
-**Security**: Only the receiver with the private key can decrypt parameters and recover audio. Encrypted params are ~640 bytes (vs ~240 bytes plain).
+**Security Features**:
+- **Automatic key generation**: System generates keys automatically if none exist
+- **Dual file output**: Both plain and encrypted parameter files are saved
+- **Batch encryption**: Can encrypt all existing parameter files at once
+- **Size**: Encrypted params are ~640 bytes (vs ~240 bytes plain)
+- **Protection**: Only authorized receivers with private keys can decrypt and recover audio
+
+### Output File Organization
+
+When using encryption, the system generates two versions of parameter files:
+
+```
+dataset/output/encryption/params/
+├── file_mask_params_multi_tone.json          # Plain JSON (for development)
+└── file_mask_params_multi_tone_encrypted.json # Encrypted version (for transmission)
+```
+
+- **Plain files**: Human-readable JSON for development and debugging
+- **Encrypted files**: Secure versions for actual transmission to authorized parties
+- **Automatic detection**: The system automatically detects encrypted vs plain files during recovery
 
 ## File Structure
 
@@ -150,21 +196,24 @@ Sound-Masking/
 ├── audio_privacy_system.py           # Main system implementation
 ├── audio_metrics.py                  # Audio quality evaluation module
 ├── encryption_module.py              # Hybrid encryption module (RSA+AES)
-├── demo_encryption.py                # Encryption demo script
 ├── requirements.txt                  # Python dependencies
 ├── PARAMETER_BASED_MASKING.md        # Detailed documentation for parameter-based masking
 ├── README.md                         # This file
 ├── dataset/                          # Dataset directory
 │   ├── input/                       # Input audio files
-│   ├── output/                      # Output result files
-│   │   ├── *_clean.wav             # Clean speech
-│   │   ├── *_mixed.wav             # Mixed signal (what eavesdroppers hear)
-│   │   ├── *_recovered.wav         # Recovered speech (authorized party)
-│   │   ├── *_mask.wav              # Mask audio (dev mode only)
-│   │   └── *_mask_params.json      # Mask parameters (plain or encrypted)
-│   └── keys/                        # RSA keypairs (if using encryption)
-│       ├── *_private.pem           # Private keys (keep secret!)
-│       └── *_public.pem            # Public keys (share with sender)
+│   └── output/                      # Output result files (organized by type)
+│       ├── audio/                   # Audio files
+│       │   ├── clean/              # Clean speech files
+│       │   ├── mixed/              # Mixed signals (what eavesdroppers hear)
+│       │   ├── recovered/          # Recovered speech (authorized party)
+│       │   └── masks/              # Mask audio files (dev mode only)
+│       └── encryption/             # Encryption related files
+│           ├── keys/               # RSA keypairs (if using encryption)
+│           │   ├── *_private.pem  # Private keys (keep secret!)
+│           │   └── *_public.pem   # Public keys (share with sender)
+│           └── params/             # Parameter files
+│               ├── *.json         # Plain parameter files
+│               └── *_encrypted.json # Encrypted parameter files
 ```
 
 ## Usage Examples
@@ -177,10 +226,9 @@ python audio_privacy_system.py --input dataset/input/file.wav
 # Adjust masking intensity
 python audio_privacy_system.py --input dataset/input/file.wav --snr -5.0
 
-# Process with encryption
+# Process with encryption (auto-generates keys if none exist)
 python audio_privacy_system.py \
   --enable-encryption \
-  --public-key dataset/keys/receiver_public.pem \
   --input dataset/input/file.wav
 ```
 
